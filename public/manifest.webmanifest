@@ -1,0 +1,17 @@
+{
+  "name": "Couillon – Kartenspiel",
+  "short_name": "Couillon",
+  "description": "Le Couillon online mit Freunden spielen – 4 Spieler, 2 Teams.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b5d3b",
+  "theme_color": "#0b5d3b",
+  "lang": "de",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,14 @@
+# Render.com Blueprint – kostenloser Web-Service für den Couillon-Server.
+# Deploy: Repo zu Render verbinden -> "New +" -> "Blueprint" -> dieses Repo wählen.
+services:
+  - type: web
+    name: couillon
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"

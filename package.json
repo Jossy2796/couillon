@@ -1,0 +1,21 @@
+{
+  "name": "couillon",
+  "version": "1.0.0",
+  "description": "Le Couillon - Online-Kartenspiel für 4 Spieler (2 Teams), mobile-first Web-App mit Node.js WebSocket-Server und Bots.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}

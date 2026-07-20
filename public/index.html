@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Couillon</title>
+  <meta name="description" content="Le Couillon – Online-Kartenspiel für 4 Spieler in 2 Teams." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0b5d3b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Couillon" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ HOME ============ -->
+  <section id="home" class="screen">
+    <div class="home-card">
+      <div class="logo">🃏</div>
+      <h1>Couillon</h1>
+      <p class="sub">Kartenspiel für 4 Spieler · 2 Teams über Kreuz</p>
+
+      <label class="field">
+        <span>Dein Name</span>
+        <input id="nameInput" type="text" maxlength="16" placeholder="z. B. Joé" autocomplete="off" />
+      </label>
+
+      <button id="btnCreate" class="btn btn-primary big">Neuen Raum erstellen</button>
+
+      <div class="divider"><span>oder</span></div>
+
+      <div class="join-row">
+        <input id="codeInput" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" />
+        <button id="btnJoin" class="btn">Beitreten</button>
+      </div>
+
+      <button id="btnRules" class="link">📖 Spielregeln</button>
+      <div id="connStatus" class="conn"></div>
+    </div>
+  </section>
+
+  <!-- ============ LOBBY ============ -->
+  <section id="lobby" class="screen hidden">
+    <div class="lobby-card">
+      <h2>Warteraum</h2>
+      <div class="code-box">
+        <span class="code-label">Raumcode</span>
+        <span id="roomCode" class="code-value">----</span>
+      </div>
+      <div class="share-row">
+        <button id="btnCopy" class="btn small">🔗 Link kopieren</button>
+        <button id="btnShare" class="btn small hidden">📤 Teilen</button>
+      </div>
+
+      <div id="seatList" class="seat-list"></div>
+
+      <div id="hostControls" class="host-controls hidden">
+        <button id="btnStart" class="btn btn-primary big">Spiel starten</button>
+        <p class="hint">Leere Plätze werden automatisch mit Bots gefüllt.</p>
+      </div>
+      <p id="waitHost" class="hint hidden">Warte auf den Gastgeber…</p>
+      <button id="btnLeave" class="link">Raum verlassen</button>
+    </div>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section id="game" class="screen hidden">
+    <header class="topbar">
+      <button id="btnMenu" class="icon-btn">☰</button>
+      <button id="scoreMini" class="score-mini">
+        <span class="team-a">A <b id="boardA">13</b></span>
+        <span class="score-sep">·</span>
+        <span class="team-b"><b id="boardB">13</b> B</span>
+        <span class="sw-chip" id="swChip">1</span>
+        <span class="score-caret">▸</span>
+      </button>
+      <div id="trumpBadge" class="trump-badge">—</div>
+    </header>
+
+    <div id="table" class="table">
+      <div id="seat-top" class="seat pos-top"></div>
+      <div id="seat-left" class="seat pos-left"></div>
+      <div id="seat-right" class="seat pos-right"></div>
+      <div id="seat-self" class="seat pos-self"></div>
+
+      <div id="trickArea" class="trick-area">
+        <div id="trick-top" class="trick-slot slot-top"></div>
+        <div id="trick-left" class="trick-slot slot-left"></div>
+        <div id="trick-right" class="trick-slot slot-right"></div>
+        <div id="trick-self" class="trick-slot slot-self"></div>
+        <div id="centerInfo" class="center-info"></div>
+      </div>
+    </div>
+
+    <div id="handArea" class="hand-area"></div>
+    <div id="statusBar" class="status-bar"></div>
+  </section>
+
+  <!-- ============ OVERLAYS ============ -->
+  <div id="trumpOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h3>Trumpf bestimmen</h3>
+      <p>Du sitzt links vom Geber und legst den Trumpf fest — <b>aus deinen 3 Karten</b>. Passen ist nicht erlaubt; dein Team trägt danach das Risiko.</p>
+      <div class="suit-picker">
+        <button class="suit-btn red" data-suit="H">♥</button>
+        <button class="suit-btn red" data-suit="D">♦</button>
+        <button class="suit-btn black" data-suit="S">♠</button>
+        <button class="suit-btn black" data-suit="C">♣</button>
+      </div>
+      <p class="suit-hint">Farbe antippen = Trumpf</p>
+    </div>
+  </div>
+
+  <div id="kontraOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h3 id="kontraTitle">Klopfen?</h3>
+      <p id="kontraHint">Die Mit wurde angesagt. Wollt ihr den Spielwert erhöhen?</p>
+      <div class="board-tiles"><div class="bt"><div class="num" id="kontraValue">2</div><div class="lbl">Spielwert</div></div></div>
+      <div class="mit-btns">
+        <button id="btnKontraRaise" class="btn btn-primary big">Klopfen (+1)</button>
+        <button id="btnKontraPass" class="btn big">Nein, weiter</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mitOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="mit-queen">♠<small>D</small></div>
+      <h3>Mit der Mit?</h3>
+      <p>Du hast die <b>Pik-Dame</b>. Machst du sie zum Trumpf?<br>
+        <b>Ja</b> → Pik-Dame wird Trumpf (2. höchster), es geht um <b>2 Striche</b>.<br>
+        <b>Nein</b> → normale Pik-Karte, es geht um <b>1 Strich</b>.</p>
+      <div class="mit-btns">
+        <button id="btnMitYes" class="btn btn-primary big">Mit! (2 Striche)</button>
+        <button id="btnMitNo" class="btn big">Ohne (1 Strich)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="handEndOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h3 id="handEndTitle">Ergebnis</h3>
+      <div id="handEndBody"></div>
+      <button id="btnContinue" class="btn btn-primary big">Weiter</button>
+      <p class="hint" id="handEndAuto">Automatisch weiter in Kürze…</p>
+    </div>
+  </div>
+
+  <div id="matchEndOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="trophy">🏆</div>
+      <h3 id="matchEndTitle">Match beendet</h3>
+      <div id="matchEndBody"></div>
+      <button id="btnRematch" class="btn btn-primary big hidden">Neues Match</button>
+      <button id="btnBackHome" class="link">Zurück zum Start</button>
+      <p class="hint hidden" id="rematchWait">Warte auf den Gastgeber für ein neues Match…</p>
+    </div>
+  </div>
+
+  <div id="menuOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h3>Menü</h3>
+      <div id="menuLog" class="log-feed"></div>
+      <button id="btnCloseMenu" class="btn big">Schließen</button>
+      <button id="btnRulesInGame" class="link">📖 Regeln</button>
+      <button id="btnLeaveGame" class="link danger">Spiel verlassen</button>
+    </div>
+  </div>
+
+  <div id="scoreOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <h3>📊 Strichliste</h3>
+      <p class="hint">Beide Teams starten bei 13. Wer zuerst auf 0 (oder darunter) ist, gewinnt.</p>
+      <div id="scoreBody"></div>
+      <button id="btnCloseScore" class="btn big">Schließen</button>
+    </div>
+  </div>
+
+  <div id="rulesOverlay" class="overlay hidden">
+    <div class="overlay-card rules">
+      <h3>📖 Regeln – Le Couillon</h3>
+      <div class="rules-body">
+        <p><b>Ziel:</b> 4 Spieler, 2 Teams über Kreuz (A: Plätze 1&amp;3, B: Plätze 2&amp;4). Beide Teams starten bei <b>13 Strichen</b> und zählen durch gewonnene Runden auf <b>0 (oder darunter)</b> herunter. Wer zuerst da ist, gewinnt.</p>
+        <p><b>Karten:</b> 24 Karten (9, 10, Bube, Dame, König, Ass in ♠♥♦♣). Nicht-Trumpf-Stärke: A &gt; K &gt; D &gt; B &gt; 10 &gt; 9. Punkte: Ass=4, König=3, Dame=2, Bube=1 → 40 pro Runde.</p>
+        <p><b>Geben &amp; Trumpf:</b> Je 3 Karten. Der Spieler <b>links vom Geber</b> muss dann aus seinen 3 Karten den Trumpf bestimmen (kein Passen) — sein Team trägt das Risiko. Danach je 3 weitere Karten (6 total). Nächste Runde gibt der Trumpfmacher.</p>
+        <p><b>Sonder-Trümpfe:</b> <b>Kreuz-Dame (♣D)</b> immer Trumpf. <b>Pik-Dame (♠D) = „Mit"</b>: ihr Halter darf sie zu Beginn ansagen → sie wird zweithöchster Trumpf und der Spielwert steigt auf 2.</p>
+        <p><b>Trumpf-Rang:</b> Trumpf-Ass › Pik-Dame (bei Mit) › Kreuz-Dame › Trumpf-König › -Dame › -Bube › -10 › -9.</p>
+        <p><b>Spiel:</b> <b>Bedienpflicht</b> — die angespielte Farbe musst du bekennen, wenn du sie hast. Nur <b>Trumpf</b> darfst du jederzeit spielen. Kannst du nicht bedienen, ist jede Karte erlaubt (kein Überstichzwang). Höchster Trumpf gewinnt den Stich, sonst die höchste Karte der angespielten Farbe. 6 Stiche.</p>
+        <p><b>Klopfen/Re:</b> Nach „Mit" dürfen die Gegner <b>klopfen</b> (+1 Spielwert), die Mit-Seite mit <b>Re</b> kontern (+1) usw.</p>
+        <p><b>Wertung:</b> Mehr Kartenpunkte gewinnt die Runde (20:20 → Nicht-Trumpf-Team). Der Sieger zieht den Spielwert von seinen Strichen ab. Verliert das <b>Trumpfmacher-Team</b>, bekommt es +1 angemacht. <b>Vole</b> (alle 6 Stiche): ein Strich mehr wird abgezogen.</p>
+      </div>
+      <button id="btnCloseRules" class="btn big">Verstanden</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
