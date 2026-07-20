@@ -49,6 +49,7 @@ function send(obj) {
   else sendQueue.push(s);
 }
 function connect() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
   setConn('Verbinde…', '');
   ws = new WebSocket(wsUrl());
   ws.onopen = () => {
@@ -203,7 +204,7 @@ function centerInfo(s) {
   if (s.phase === 'mit') return s.canMit ? 'Mit?' : `${seatDisplay(s, s.qsHolder)}<br>Mit?`;
   if (s.phase === 'kontra') return `Kontra<br>Team ${s.kontraTurn}`;
   if (s.trickComplete) return `${seatDisplay(s, s.trickWinnerSeat)}<br>gewinnt`;
-  return `A ${s.capturedPoints.A} : ${s.capturedPoints.B} B`;
+  return `Stich ${(s.trickCount || 0) + 1}/6`;
 }
 
 function statusText(s) {
@@ -501,6 +502,18 @@ function init() {
   else if (urlRoom && playerName) roomToRejoin = urlRoom;
 
   connect();
+
+  // Auf iPhone/Safari: bei Rückkehr in die App bzw. wieder online sofort neu verbinden,
+  // damit nicht dauerhaft ein Bot übernimmt.
+  const ensureConnected = () => {
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      reconnectDelay = 500;
+      connect();
+    }
+  };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureConnected(); });
+  window.addEventListener('focus', ensureConnected);
+  window.addEventListener('online', ensureConnected);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

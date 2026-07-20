@@ -1,6 +1,6 @@
 // sw.js — schlanker Service-Worker (Network-First), damit die App installierbar ist
 // und bei schlechtem Netz nicht mit leerem Bildschirm startet.
-const CACHE = 'couillon-v1';
+const CACHE = 'couillon-v2';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', e => {

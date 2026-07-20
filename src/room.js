@@ -13,6 +13,7 @@ const RANK_DISPLAY = { '9': '9', T: '10', J: 'B', Q: 'D', K: 'K', A: 'A' };
 export function formatCard(card) { return RANK_DISPLAY[card[0]] + SUIT_SYMBOLS[card[1]]; }
 
 const BOT_DELAY = 850;      // ms, natürlicheres Tempo für Bot-Züge
+const DISCONNECT_GRACE = 12000; // ms, getrennter Mensch darf sich neu verbinden, bevor ein Bot übernimmt
 const TRICK_PAUSE = 1300;   // ms, fertigen Stich kurz zeigen
 const HAND_PAUSE = 8000;    // ms, Rundenergebnis zeigen, dann automatisch weiter
 
@@ -83,7 +84,16 @@ export class Room {
       this.scheduleAuto();
       return { ok: true, seat: existing, reconnect: true };
     }
-    if (this.phase !== 'lobby') return { ok: false, error: 'Spiel läuft bereits.' };
+    if (this.phase !== 'lobby') {
+      // Laufendes Spiel: Nachzügler übernimmt einen freien Bot-Platz.
+      const botSeat = this.seats.findIndex(p => p && p.isBot);
+      if (botSeat < 0) return { ok: false, error: 'Raum ist voll.' };
+      this.seats[botSeat] = { playerId, name: name || `Spieler ${botSeat + 1}`, isBot: false, connected: true };
+      this.logMsg(`${this.seats[botSeat].name} übernimmt einen Bot-Platz.`);
+      this.touch();
+      this.scheduleAuto();
+      return { ok: true, seat: botSeat, reconnect: false, tookOverBot: true };
+    }
     const seat = this.firstFreeSeat();
     if (seat < 0) return { ok: false, error: 'Raum ist voll.' };
     this.seats[seat] = { playerId, name: name || `Spieler ${seat + 1}`, isBot: false, connected: true };
@@ -296,7 +306,7 @@ export class Room {
     this.capturedPoints[team] += pts;
     this.tricksWon[team] += 1;
     this.trickCount += 1;
-    this.logMsg(`${this.seatName(winnerSeat)} gewinnt den Stich (+${pts}). Punkte: A ${this.capturedPoints.A} : ${this.capturedPoints.B} B.`);
+    this.logMsg(`${this.seatName(winnerSeat)} gewinnt den Stich.`);
 
     this.currentTrick = [];
     this.trickComplete = false;
@@ -355,8 +365,8 @@ export class Room {
 
   // ---- Automatik (Bots & getrennte Spieler) ----
   scheduleAuto() {
+    if (this._resolving) return; // Stich-Auflösung nicht unterbrechen
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
-    if (this._resolving) return;
     if (!this.hasConnectedHuman()) return;
 
     if (this.phase === 'roundEnd') {
@@ -373,8 +383,11 @@ export class Room {
 
     const occ = this.seats[this.turnSeat];
     if (!occ) return;
-    if (!(occ.isBot || !occ.connected)) return;
-    this._timer = setTimeout(() => this.autoAct(), BOT_DELAY);
+    const isBot = occ.isBot;
+    const isDroppedHuman = !occ.isBot && !occ.connected;
+    if (!isBot && !isDroppedHuman) return; // verbundener Mensch -> auf ihn warten
+    // Getrennter Mensch bekommt Zeit zum Reconnect, bevor ein Bot für ihn übernimmt.
+    this._timer = setTimeout(() => this.autoAct(), isBot ? BOT_DELAY : DISCONNECT_GRACE);
   }
 
   autoKontra() {
@@ -448,7 +461,8 @@ export class Room {
       board: this.board,
       startStriche: this.config.START_STRICHE,
       history: this.history.slice(-12),
-      capturedPoints: this.capturedPoints,
+      // Laufende Rundenpunkte NICHT anzeigen; erst beim Rundenende sichtbar.
+      capturedPoints: (this.phase === 'roundEnd' || this.phase === 'matchEnd') ? this.capturedPoints : { A: null, B: null },
       tricksWon: this.tricksWon,
       lastRound: this.phase === 'roundEnd' || this.phase === 'matchEnd' ? this.lastRound : null,
       matchWinner: this.matchWinner,
