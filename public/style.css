@@ -300,18 +300,19 @@ input::placeholder { color: rgba(255,255,255,.4); }
   background: repeating-linear-gradient(45deg, #7a1f1f, #7a1f1f 4px, #9c2a2a 4px, #9c2a2a 8px);
   opacity: 0; transform: translate(-50%, -50%) scale(.5);
 }
-.dcard:nth-child(1) { animation: fly-up 1.05s ease-in 0s infinite; }
-.dcard:nth-child(2) { animation: fly-left 1.05s ease-in .13s infinite; }
-.dcard:nth-child(3) { animation: fly-right 1.05s ease-in .26s infinite; }
-.dcard:nth-child(4) { animation: fly-down 1.05s ease-in .39s infinite; }
-.dcard:nth-child(5) { animation: fly-up 1.05s ease-in .55s infinite; }
-.dcard:nth-child(6) { animation: fly-left 1.05s ease-in .68s infinite; }
-.dcard:nth-child(7) { animation: fly-right 1.05s ease-in .81s infinite; }
-.dcard:nth-child(8) { animation: fly-down 1.05s ease-in .94s infinite; }
-@keyframes fly-up    { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%,-250px) rotate(8deg); } }
-@keyframes fly-down  { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%,120px) rotate(-8deg); } }
-@keyframes fly-left  { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-190px,-70px) rotate(-16deg); } }
-@keyframes fly-right { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(140px,-70px) rotate(16deg); } }
+.dcard:nth-child(1) { animation: fly-ul 1.05s ease-in 0s infinite; }
+.dcard:nth-child(2) { animation: fly-ur 1.05s ease-in .13s infinite; }
+.dcard:nth-child(3) { animation: fly-dl 1.05s ease-in .26s infinite; }
+.dcard:nth-child(4) { animation: fly-dr 1.05s ease-in .39s infinite; }
+.dcard:nth-child(5) { animation: fly-ul 1.05s ease-in .55s infinite; }
+.dcard:nth-child(6) { animation: fly-ur 1.05s ease-in .68s infinite; }
+.dcard:nth-child(7) { animation: fly-dl 1.05s ease-in .81s infinite; }
+.dcard:nth-child(8) { animation: fly-dr 1.05s ease-in .94s infinite; }
+/* Diagonal zu den vier Plätzen — lässt das Gesicht frei */
+@keyframes fly-ul { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-215px,-210px) rotate(-16deg); } }
+@keyframes fly-ur { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(165px,-210px) rotate(16deg); } }
+@keyframes fly-dl { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(-180px,95px) rotate(14deg); } }
+@keyframes fly-dr { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.5); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(135px,95px) rotate(-14deg); } }
 @media (prefers-reduced-motion: reduce) { .dcard { animation-duration: .01s; animation-iteration-count: 1; } }
 
 /* ---------- Toast ---------- */
