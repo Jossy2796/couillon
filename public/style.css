@@ -166,6 +166,7 @@ input::placeholder { color: rgba(255,255,255,.4); }
   font-size: 10px; padding: 2px 6px; border-radius: 8px; background: var(--gold); color: #3a2c05; font-weight: 700;
 }
 .badge.dealer { background: #fff; color: #222; }
+.badge.mit { background: var(--teamB); color: #3a1a05; }
 .mini-cards { display: flex; gap: -6px; height: 24px; }
 .card-back {
   width: 17px; height: 24px; border-radius: 3px; margin-left: -7px;
@@ -209,6 +210,7 @@ input::placeholder { color: rgba(255,255,255,.4); }
 .trick-slot .card { width: 50px; height: 70px; animation: drop .2s ease; }
 @keyframes drop { from { transform: translateY(-14px); opacity: .3; } to { transform: none; opacity: 1; } }
 .trick-slot.winner .card { box-shadow: 0 0 0 3px var(--gold), var(--shadow); }
+.trick-slot.leading .card { box-shadow: 0 0 0 3px #57d16a, var(--shadow); } /* führt gerade */
 
 /* ---------- Hand ---------- */
 .hand-area {

@@ -4,7 +4,7 @@
 //   -> Mit? -> ggf. Klopfen/Re -> 6 Stiche -> Wertung.
 import {
   makeDeck, shuffle, sortHand, legalCards, isLegal, trickWinnerIndex,
-  pointsOf, teamOf, scoreRound, seatWithQS, CONFIG,
+  currentWinnerSeat, pointsOf, teamOf, scoreRound, seatWithQS, CONFIG,
   SUIT_SYMBOLS, SUIT_NAMES,
 } from './game.js';
 import { decideTrump, decideMit, chooseCard } from './bot.js';
@@ -41,6 +41,7 @@ export class Room {
     this.mitTeam = null;
     this.spielwertBase = 1;      // 1 + Mit + Klopfen/Re
     this.kontraTurn = null;      // Team, das gerade erhöhen darf ('A'/'B')
+    this.kontraPassed = new Set(); // Sitze, die in dieser Team-Runde schon gepasst haben
     this._deck = [];
 
     this.hands = [[], [], [], []];
@@ -230,9 +231,14 @@ export class Room {
   }
 
   // ---- Klopfen / Re ----
+  // Jeder der beiden Partner entscheidet selbst. Klopft/Re-t EINER, zählt es sofort.
+  // Passen müssen BEIDE, damit das Team nicht mehr erhöht.
+  teamSeatsOf(team) { return [0, 1, 2, 3].filter(s => teamOf(s) === team); }
+
   startKontra() {
     this.phase = 'kontra';
     this.kontraTurn = this.mitTeam === 'A' ? 'B' : 'A'; // Gegner dürfen zuerst klopfen
+    this.kontraPassed = new Set();
     this.logMsg(`Team ${this.kontraTurn} darf klopfen (Kontra).`);
     this.emit();
     this.scheduleAuto();
@@ -242,20 +248,29 @@ export class Room {
     if (this.phase !== 'kontra') return;
     const seat = this.seatOf(playerId);
     if (seat < 0 || teamOf(seat) !== this.kontraTurn) return;
-    this.applyKontra(msg.action === 'raise' ? 'raise' : 'pass');
+    if (this.kontraPassed.has(seat)) return; // hat schon gepasst
+    this.applyKontra(seat, msg.action === 'raise' ? 'raise' : 'pass');
   }
 
-  applyKontra(action) {
+  applyKontra(seat, action) {
     if (action === 'raise') {
       this.spielwertBase += 1;
       const label = this.kontraTurn === this.mitTeam ? 'Re' : 'Klopfen';
-      this.logMsg(`Team ${this.kontraTurn}: ${label}! Spielwert jetzt ${this.spielwertBase}.`);
+      this.logMsg(`${this.seatName(seat)} (Team ${this.kontraTurn}): ${label}! Spielwert jetzt ${this.spielwertBase}.`);
       this.kontraTurn = this.kontraTurn === 'A' ? 'B' : 'A';
+      this.kontraPassed = new Set();
       this.emit();
       this.scheduleAuto();
-    } else {
+      return;
+    }
+    // Einzelnes Passen.
+    this.kontraPassed.add(seat);
+    if (this.teamSeatsOf(this.kontraTurn).every(s => this.kontraPassed.has(s))) {
       this.logMsg(`Team ${this.kontraTurn} erhöht nicht mehr.`);
       this.startPlaying();
+    } else {
+      this.emit();
+      this.scheduleAuto();
     }
   }
 
@@ -374,9 +389,10 @@ export class Room {
       return;
     }
     if (this.phase === 'kontra') {
-      if (!this.teamHasConnectedHuman(this.kontraTurn)) {
-        this._timer = setTimeout(() => this.autoKontra(), BOT_DELAY);
-      }
+      // Bots/getrennte Spieler des Teams passen EINZELN; Menschen entscheiden selbst.
+      const autoSeat = this.teamSeatsOf(this.kontraTurn).find(s =>
+        !this.kontraPassed.has(s) && this.seats[s] && (this.seats[s].isBot || !this.seats[s].connected));
+      if (autoSeat != null) this._timer = setTimeout(() => this.autoKontra(autoSeat), BOT_DELAY);
       return;
     }
     if (!['trump', 'mit', 'playing'].includes(this.phase)) return;
@@ -390,11 +406,13 @@ export class Room {
     this._timer = setTimeout(() => this.autoAct(), isBot ? BOT_DELAY : DISCONNECT_GRACE);
   }
 
-  autoKontra() {
+  autoKontra(seat) {
     this._timer = null;
     if (this.phase !== 'kontra') return;
-    if (this.teamHasConnectedHuman(this.kontraTurn)) return; // Mensch übernimmt
-    this.applyKontra('pass'); // Bots erhöhen nicht
+    if (teamOf(seat) !== this.kontraTurn || this.kontraPassed.has(seat)) return;
+    const occ = this.seats[seat];
+    if (occ && occ.connected && !occ.isBot) return; // Mensch entscheidet selbst
+    this.applyKontra(seat, 'pass'); // Bots erhöhen nicht
   }
 
   autoAct() {
@@ -451,11 +469,15 @@ export class Room {
       legalCards: legal,
       canTrump: this.phase === 'trump' && you === this.turnSeat,
       canMit: this.phase === 'mit' && you === this.qsHolder,
-      canKontra: this.phase === 'kontra' && you >= 0 && teamOf(you) === this.kontraTurn,
+      canKontra: this.phase === 'kontra' && you >= 0 && teamOf(you) === this.kontraTurn && !this.kontraPassed.has(you),
+      kontraPassed: this.phase === 'kontra' && you >= 0 && this.kontraPassed.has(you),
       kontraLabel: this.phase === 'kontra' ? (this.kontraTurn === this.mitTeam ? 'Re' : 'Klopfen') : null,
       currentTrick: this.currentTrick,
       trickComplete: this.trickComplete,
       trickWinnerSeat: this.trickWinnerSeat,
+      // Wer hat aktuell die höchste Karte im laufenden Stich?
+      leadingSeat: (this.phase === 'playing' && this.currentTrick.length > 0)
+        ? currentWinnerSeat(this.currentTrick, this.trump, this.mit) : null,
       trickLeadSeat: this.trickLeadSeat,
       trickCount: this.trickCount,
       board: this.board,

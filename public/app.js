@@ -170,6 +170,7 @@ function renderGame(s) {
     const trumpCls = isTrumpCard(t.card, s.trump, s.mit) ? 'trump' : '';
     slot.innerHTML = cardHtml(t.card, trumpCls);
     if (s.trickComplete && t.seat === s.trickWinnerSeat) slot.classList.add('winner');
+    else if (!s.trickComplete && t.seat === s.leadingSeat) slot.classList.add('leading');
   }
   // Zentrum-Info
   $('centerInfo').innerHTML = centerInfo(s);
@@ -184,7 +185,8 @@ function seatChip(p, s) {
   const dot = p.team === 'A' ? 'var(--teamA)' : 'var(--teamB)';
   const badges = [];
   if (p.seat === s.dealerSeat) badges.push('<span class="badge dealer">Geber</span>');
-  if (p.seat === s.taker) badges.push('<span class="badge">Ansage</span>');
+  if (p.seat === s.taker) badges.push('<span class="badge">Trumpf</span>');
+  if (s.mit && p.seat === s.qsHolder) badges.push('<span class="badge mit">Mit ♠D</span>');
   const cls = ['player-chip'];
   if (p.seat === s.turnSeat && (s.phase === 'bidding' || s.phase === 'playing')) cls.push('turn');
   if (!p.connected && !p.isBot) cls.push('disconnected');
@@ -204,6 +206,7 @@ function centerInfo(s) {
   if (s.phase === 'mit') return s.canMit ? 'Mit?' : `${seatDisplay(s, s.qsHolder)}<br>Mit?`;
   if (s.phase === 'kontra') return `Kontra<br>Team ${s.kontraTurn}`;
   if (s.trickComplete) return `${seatDisplay(s, s.trickWinnerSeat)}<br>gewinnt`;
+  if (s.currentTrick.length > 0 && s.leadingSeat != null) return `▲ ${seatDisplay(s, s.leadingSeat)}<br>führt`;
   return `Stich ${(s.trickCount || 0) + 1}/6`;
 }
 
@@ -215,13 +218,15 @@ function statusText(s) {
     return s.canMit ? '▶ Du: Pik-Dame ansagen (Mit)?' : `${seatDisplay(s, s.qsHolder)} entscheidet über die Mit…`;
   }
   if (s.phase === 'kontra') {
-    return s.canKontra ? `▶ Team ${s.kontraTurn}: ${s.kontraLabel}?` : `Team ${s.kontraTurn} überlegt (${s.kontraLabel})…`;
+    if (s.canKontra) return `▶ Team ${s.kontraTurn}: ${s.kontraLabel}?`;
+    if (s.kontraPassed) return 'Du hast gepasst — warte auf deinen Mitspieler…';
+    return `Team ${s.kontraTurn} überlegt (${s.kontraLabel})…`;
   }
   if (s.phase === 'playing') {
     let t = '';
     if (s.taker != null) {
       t = ` · Trumpf: ${seatDisplay(s, s.taker)} ${SUIT_SYMBOLS[s.trump] || ''}`;
-      if (s.mit) t += ' +Mit';
+      if (s.mit) t += ` · Mit: ${seatDisplay(s, s.qsHolder)}`;
       if ((s.spielwert || 1) > 1) t += ` · Wert ${s.spielwert}`;
     }
     const turn = s.turnSeat === s.you ? '▶ Du bist dran' : `${seatDisplay(s, s.turnSeat)} ist dran`;

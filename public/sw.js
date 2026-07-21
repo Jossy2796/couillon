@@ -1,7 +1,7 @@
 // sw.js — robuster Service-Worker.
 // Wichtig: liefert bei Fehlern NIE die HTML-Seite als CSS/JS aus (das führte zu
 // "nur Text, kein Styling"). Cacht nur erfolgreiche Antworten.
-const CACHE = 'couillon-v3';
+const CACHE = 'couillon-v4';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', e => {
