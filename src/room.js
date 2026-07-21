@@ -125,6 +125,19 @@ export class Room {
   fillWithBots() { for (let s = 0; s < 4; s++) if (!this.seats[s]) this.addBot(s); }
   isHost(playerId) { return playerId === this.hostId; }
 
+  // Spieler zufällig auf die 4 Sitze mischen -> zufällige Teams (Partner sitzen über Kreuz).
+  shuffleSeats() {
+    const occ = this.seats.slice();
+    for (let i = occ.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [occ[i], occ[j]] = [occ[j], occ[i]];
+    }
+    this.seats = occ;
+  }
+  teamMembers(team) {
+    return [0, 1, 2, 3].filter(s => teamOf(s) === team).map(s => this.seatName(s)).join(' & ');
+  }
+
   // ---- Aktionen ----
   handle(playerId, msg) {
     switch (msg.type) {
@@ -145,6 +158,7 @@ export class Room {
     if (this.phase !== 'lobby' && this.phase !== 'matchEnd') return;
     this.fillWithBots();
     if (this.seats.some(s => s === null)) return;
+    this.shuffleSeats(); // Teams für dieses Match zufällig auslosen
     this.board = { A: this.config.START_STRICHE, B: this.config.START_STRICHE };
     this.history = [];
     this.matchWinner = null;
@@ -152,6 +166,7 @@ export class Room {
     this.dealerSeat = 0; // Spieler 1 gibt in Runde 1
     this.log = [];
     this.logMsg(`Neues Match! Beide Teams starten bei ${this.config.START_STRICHE} Strichen — wer zuerst auf 0 (oder darunter) ist, gewinnt.`);
+    this.logMsg(`Teams ausgelost — Team A: ${this.teamMembers('A')} · Team B: ${this.teamMembers('B')}.`);
     this.startRound();
   }
 

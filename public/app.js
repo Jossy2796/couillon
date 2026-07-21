@@ -107,11 +107,20 @@ function currentName() {
 
 // ================= RENDER =================
 function render(s) {
-  if (s.phase === 'trump' && prevPhase !== 'trump') playDeal(); // neue Runde -> austeilen
+  if (s.phase === 'trump' && prevPhase !== 'trump') {
+    playDeal(); // neue Runde -> austeilen
+    if ((s.history || []).length === 0) announcePartner(s); // erste Runde eines Matches -> Teams zeigen
+  }
   prevPhase = s.phase;
   if (s.phase === 'lobby') { showScreen('lobby'); renderLobby(s); }
   else { showScreen('game'); renderGame(s); }
   renderOverlays(s);
+}
+
+function announcePartner(s) {
+  if (s.you == null || s.you < 0) return;
+  const p = s.players[(s.you + 2) % 4];
+  if (p && !p.empty) setTimeout(() => toast('🎲 Neue Teams · dein Partner: ' + p.name), 1750);
 }
 
 function playDeal() {
