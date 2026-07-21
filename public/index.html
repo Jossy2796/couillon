@@ -197,6 +197,65 @@
     </div>
   </div>
 
+  <!-- Austeil-Animation: elegante Kartengeberin -->
+  <div id="dealAnim" class="deal-anim hidden">
+    <div class="deal-stage">
+      <svg viewBox="0 0 260 272" xmlns="http://www.w3.org/2000/svg" class="dealer-svg" aria-hidden="true">
+        <!-- Haar hinten -->
+        <path d="M78 150 Q60 58 130 44 Q200 58 182 150 Q190 205 168 220 L92 220 Q70 205 78 150 Z" fill="#332a20"/>
+        <!-- Hals -->
+        <rect x="116" y="136" width="28" height="36" rx="12" fill="#eab68f"/>
+        <path d="M116 150 q14 12 28 0 v12 h-28 z" fill="#d99f77"/>
+        <!-- Schultern / Kleid -->
+        <path d="M60 272 Q66 210 130 194 Q194 210 200 272 Z" fill="#8e1b3b"/>
+        <path d="M104 200 Q130 226 156 200 Q150 216 130 218 Q110 216 104 200 Z" fill="#a52449"/>
+        <path d="M113 196 Q130 210 147 196 Q141 205 130 206 Q119 205 113 196 Z" fill="#eab68f"/>
+        <!-- Gesicht -->
+        <ellipse cx="130" cy="102" rx="42" ry="48" fill="#f1c49b"/>
+        <circle cx="90" cy="106" r="8" fill="#eab68f"/><circle cx="170" cy="106" r="8" fill="#eab68f"/>
+        <circle cx="90" cy="116" r="3" fill="#e9c46a"/><circle cx="170" cy="116" r="3" fill="#e9c46a"/>
+        <!-- Pony / Rahmung -->
+        <path d="M86 104 Q82 50 130 46 Q178 50 174 104 Q170 72 150 68 Q140 84 130 84 Q120 84 110 68 Q90 72 86 104 Z" fill="#3d3227"/>
+        <path d="M86 104 Q80 152 92 190 Q86 142 96 108 Z" fill="#332a20"/>
+        <path d="M174 104 Q180 152 168 190 Q174 142 164 108 Z" fill="#332a20"/>
+        <!-- Wangen -->
+        <ellipse cx="104" cy="117" rx="10" ry="6" fill="#f2a09a" opacity=".55"/>
+        <ellipse cx="156" cy="117" rx="10" ry="6" fill="#f2a09a" opacity=".55"/>
+        <!-- Augenbrauen -->
+        <path d="M100 85 Q112 81 123 85" stroke="#4a3a2c" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+        <path d="M137 85 Q148 81 160 85" stroke="#4a3a2c" stroke-width="2.1" fill="none" stroke-linecap="round"/>
+        <!-- Augen -->
+        <ellipse cx="111" cy="99" rx="10" ry="7.5" fill="#fff"/><ellipse cx="149" cy="99" rx="10" ry="7.5" fill="#fff"/>
+        <circle cx="112" cy="100" r="5" fill="#5b3d24"/><circle cx="150" cy="100" r="5" fill="#5b3d24"/>
+        <circle cx="113.6" cy="98.4" r="1.6" fill="#fff"/><circle cx="151.6" cy="98.4" r="1.6" fill="#fff"/>
+        <path d="M101 96 Q111 89 121 95" stroke="#2b2018" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        <path d="M139 95 Q149 89 159 96" stroke="#2b2018" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+        <path d="M120 94 l6 -2" stroke="#2b2018" stroke-width="2" stroke-linecap="round"/>
+        <path d="M140 94 l-6 -2" stroke="#2b2018" stroke-width="2" stroke-linecap="round"/>
+        <!-- Nase -->
+        <path d="M130 104 q4 10 -2 14" stroke="#d9996f" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <!-- Lippen -->
+        <path d="M116 130 Q130 123 144 130 Q130 133 116 130 Z" fill="#c83a54"/>
+        <path d="M116 130 Q130 143 144 130 Q130 134 116 130 Z" fill="#b02a46"/>
+        <path d="M117 130 Q130 133 143 130" stroke="#8e1c37" stroke-width="1.1" fill="none"/>
+        <!-- Kartenfächer + Hände -->
+        <g>
+          <g transform="translate(128 240) rotate(-22)"><rect x="-15" y="-30" width="30" height="44" rx="4" fill="#fdfdf7" stroke="#c9c9c0"/><text x="0" y="-3" text-anchor="middle" font-size="19" fill="#c62828" font-family="Arial">&#9829;</text></g>
+          <g transform="translate(130 238) rotate(-7)"><rect x="-15" y="-30" width="30" height="44" rx="4" fill="#fdfdf7" stroke="#c9c9c0"/><text x="0" y="-3" text-anchor="middle" font-size="19" fill="#1a1a1a" font-family="Arial">&#9824;</text></g>
+          <g transform="translate(130 238) rotate(7)"><rect x="-15" y="-30" width="30" height="44" rx="4" fill="#fdfdf7" stroke="#c9c9c0"/><text x="0" y="-3" text-anchor="middle" font-size="19" fill="#c62828" font-family="Arial">&#9830;</text></g>
+          <g transform="translate(128 240) rotate(22)"><rect x="-15" y="-30" width="30" height="44" rx="4" fill="#fdfdf7" stroke="#c9c9c0"/><text x="0" y="-3" text-anchor="middle" font-size="19" fill="#1a1a1a" font-family="Arial">&#9827;</text></g>
+        </g>
+        <ellipse cx="102" cy="242" rx="12" ry="9" fill="#eab68f" transform="rotate(-18 102 242)"/>
+        <ellipse cx="158" cy="242" rx="12" ry="9" fill="#eab68f" transform="rotate(18 158 242)"/>
+      </svg>
+      <div class="fly">
+        <span class="dcard"></span><span class="dcard"></span><span class="dcard"></span><span class="dcard"></span>
+        <span class="dcard"></span><span class="dcard"></span><span class="dcard"></span><span class="dcard"></span>
+      </div>
+      <div class="deal-caption">Karten werden ausgeteilt…</div>
+    </div>
+  </div>
+
   <div id="toast" class="toast hidden"></div>
 </div>
 

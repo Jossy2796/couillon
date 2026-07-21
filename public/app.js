@@ -38,6 +38,8 @@ let roomToRejoin = null;
 let lastState = null;
 let sendQueue = [];
 let reconnectDelay = 500;
+let prevPhase = null;   // für die Austeil-Animation
+let dealTimer = null;
 
 function wsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -105,9 +107,18 @@ function currentName() {
 
 // ================= RENDER =================
 function render(s) {
+  if (s.phase === 'trump' && prevPhase !== 'trump') playDeal(); // neue Runde -> austeilen
+  prevPhase = s.phase;
   if (s.phase === 'lobby') { showScreen('lobby'); renderLobby(s); }
   else { showScreen('game'); renderGame(s); }
   renderOverlays(s);
+}
+
+function playDeal() {
+  const el = $('dealAnim');
+  el.classList.remove('hidden'); // display-Wechsel startet die CSS-Animationen neu
+  clearTimeout(dealTimer);
+  dealTimer = setTimeout(() => el.classList.add('hidden'), 1600);
 }
 
 function renderLobby(s) {
@@ -442,6 +453,9 @@ function bindEvents() {
   $('btnContinue').addEventListener('click', () => send({ type: 'continue' }));
   $('btnRematch').addEventListener('click', () => send({ type: 'rematch' }));
 
+  // Austeil-Animation antippen = überspringen
+  $('dealAnim').addEventListener('click', () => { clearTimeout(dealTimer); $('dealAnim').classList.add('hidden'); });
+
   // Menü
   $('btnMenu').addEventListener('click', () => { renderLog(); $('menuOverlay').classList.remove('hidden'); });
   $('btnCloseMenu').addEventListener('click', () => $('menuOverlay').classList.add('hidden'));
@@ -460,7 +474,7 @@ function leaveRoom() {
   localStorage.removeItem('couillon_room');
   roomToRejoin = null;
   lastState = null;
-  ['trumpOverlay', 'mitOverlay', 'kontraOverlay', 'scoreOverlay', 'handEndOverlay', 'matchEndOverlay', 'menuOverlay'].forEach(id => $(id).classList.add('hidden'));
+  ['trumpOverlay', 'mitOverlay', 'kontraOverlay', 'scoreOverlay', 'handEndOverlay', 'matchEndOverlay', 'menuOverlay', 'dealAnim'].forEach(id => $(id).classList.add('hidden'));
   showScreen('home');
   history.replaceState(null, '', location.pathname);
 }
