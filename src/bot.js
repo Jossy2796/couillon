@@ -16,6 +16,7 @@ export const DEFAULT_CFG = {
   cheapTrumpMax: 3,          // Trümpfe bis Stärke 3 gelten als "billig" (großzügiger einsetzen)
   leadLowMaxRank: 2,         // "niedrige" Anspielkarte (nur wenn Asse zurückgehalten werden)
   useMitInfo: true,          // PIMC: Pik-Dame fest dem bekannten Mit-Halter zuordnen
+  pimcSamples: 40,           // PIMC-Stichproben je Zug (Arena: 40 > 24, ~1,7ms/Zug)
 };
 
 // ---- Trumpfwahl (Spieler links vom Geber, aus 3 Karten, kein Passen) -----
@@ -45,10 +46,17 @@ function evaluateSuit(hand, trump) {
 
 // ---- Mit-Entscheidung (Halter der Pik-Dame) ------------------------------
 export function decideMit(hand, trump, seat, takerTeam) {
-  const onTakerTeam = teamOf(seat) === takerTeam;
-  const strongTrumps = hand.filter(c => isTrump(c, trump, true) && trumpStrength(c, trump, true) >= 5).length;
-  const trumpCount = hand.filter(c => isTrump(c, trump, true)).length;
-  return onTakerTeam && (strongTrumps >= 2 || trumpCount >= 4);
+  if (teamOf(seat) !== takerTeam) return false;
+  // Arena-optimiert (mitAggr): schon ab EINEM starken Trumpf (Trumpf-Ass /
+  // Pik-Dame / Kreuz-Dame) ODER 3 Trümpfen ansagen. Deutlich weniger zaghaft.
+  let strong = 0, count = 0;
+  for (const c of hand) {
+    if (isTrump(c, trump, true)) {
+      count++;
+      if (c === 'A' + trump || c === 'QS' || c === 'QC') strong++;
+    }
+  }
+  return strong >= 1 || count >= 3;
 }
 
 // ---- Kartenwahl ----------------------------------------------------------
@@ -195,8 +203,9 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
   }
 
   const botTeam = teamOf(seat);
+  const samples = cfg.pimcSamples || PIMC_SAMPLES;
   const scores = new Map(legal.map(c => [c, 0]));
-  for (let k = 0; k < PIMC_SAMPLES; k++) {
+  for (let k = 0; k < samples; k++) {
     const dealt = determinize(unseen, need, seatVoids, esOf, fixed);
     for (const cand of legal) {
       const hands = { [seat]: hand.filter(c => c !== cand) };
