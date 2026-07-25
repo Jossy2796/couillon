@@ -78,21 +78,23 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
     const myTrumps = hand.filter(isT);
     const bossTrumps = myTrumps.filter(isBossTrump);
 
-    // A) Wenn keine Trümpfe mehr draußen sind: sichere Nebenfarben-Gewinner cashen.
+    // A) Keine Trümpfe mehr draußen -> sichere Gewinner cashen (Asse sind jetzt sicher).
     if (noOutstandingTrumps) {
       const winners = nonTrumps.filter(isTopOfSuit);
       if (winners.length) return byHighVal(winners)[0];
     }
-    // B) Trümpfe ziehen: höchsten unschlagbaren Trumpf, wenn ich mehrere Trümpfe halte.
+    // B) Trümpfe ziehen mit unschlagbarem Trumpf + Länge (danach kann man sicher cashen).
     if (bossTrumps.length && myTrumps.length >= 3) return byLowRank(bossTrumps).slice(-1)[0];
-    // C) Top-Ass einer Nebenfarbe cashen, in die kein Gegner leer ist (kein Ruff-Risiko).
-    const cashAces = nonTrumps.filter(c => strengthOf(c) === 5 && isTopOfSuit(c) && !oppVoid(suitOf(c)));
-    if (cashAces.length) return cashAces[0];
-    // D) Sicherer niedriger Anspiel: Nebenfarbe, in die Gegner NICHT leer sind.
-    const safeLows = nonTrumps.filter(c => !oppVoid(suitOf(c)));
-    if (safeLows.length) return byLowVal(safeLows)[0];
+    // C) WICHTIG: Solange Gegner Trümpfe haben, KEINE Asse/Könige/Damen anspielen —
+    //    die würden einfach abgestochen (freies Trumpfen!). Lieber niedrig rausgehen.
+    const lowNon = nonTrumps.filter(c => strengthOf(c) <= 2); // 9, 10, Bube
+    if (lowNon.length) {
+      const safe = lowNon.filter(c => !oppVoid(suitOf(c)));
+      return byLowVal(safe.length ? safe : lowNon)[0];
+    }
+    // D) Nur hohe Nicht-Trümpfe übrig -> den am wenigsten wertvollen abspielen.
     if (nonTrumps.length) return byLowVal(nonTrumps)[0];
-    // E) Nur Trümpfe: niedrigen Trumpf.
+    // E) Nur Trümpfe -> niedrigen Trumpf.
     return byLowRank(trumps)[0];
   }
 

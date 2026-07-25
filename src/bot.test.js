@@ -36,10 +36,18 @@ test('Anspiel: Trümpfe ziehen mit unschlagbarem Trumpf + Länge', () => {
   assert.equal(card, 'AH', 'höchsten Trumpf anspielen, um Gegner-Trümpfe zu ziehen');
 });
 
-test('Anspiel: Top-Ass einer Nebenfarbe cashen', () => {
-  const hand = ['AS', '9S', 'TD', '9C', 'JD', 'TC']; // keine Trümpfe (H), AS = Top-Pik
+test('Anspiel: Ass NICHT anspielen, solange Gegner Trümpfe haben (würde gestochen)', () => {
+  const hand = ['AS', '9S', 'TD', '9C', 'JD', 'TC']; // AS könnte abgestochen werden
   const card = chooseCard(hand, [], 'H', false, 0);
-  assert.equal(card, 'AS');
+  assert.notEqual(card, 'AS', 'Ass zurückhalten');
+  assert.ok(['9S', '9C', 'TD', 'TC', 'JD'].includes(card), 'niedrig anspielen');
+});
+
+test('Anspiel: Ass cashen, wenn keine Trümpfe mehr draußen sind', () => {
+  // alle 7 Trümpfe (6 Herz + Kreuz-Dame) sind weg -> AS ist unschlagbar
+  const played = ['AH', 'KH', 'QH', 'JH', 'TH', '9H', 'QC'];
+  const card = chooseCard(['AS', '9C'], [], 'H', false, 0, played);
+  assert.equal(card, 'AS', 'jetzt sicher -> Ass cashen');
 });
 
 test('Gegner führt kleinen Stich: mittleren Trumpf NICHT verschwenden', () => {
