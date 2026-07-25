@@ -7,6 +7,15 @@ import {
 
 const ALL_CARDS = makeDeck();
 
+// Strategie-Stellschrauben — per Head-to-head-Arena (Duplikat-Deals) optimiert.
+export const DEFAULT_CFG = {
+  cashAcesWhileTrumps: true, // Top-Asse aktiv cashen (Arena: klar besser als zurückhalten)
+  drawMinTrumps: 3,          // ab 3 (Boss-)Trümpfen Trümpfe ziehen
+  trumpInMinPoints: 3,       // schon ab 3 Punkten riskant einstechen
+  cheapTrumpMax: 3,          // Trümpfe bis Stärke 3 gelten als "billig" (großzügiger einsetzen)
+  leadLowMaxRank: 2,         // "niedrige" Anspielkarte (nur wenn Asse zurückgehalten werden)
+};
+
 // ---- Trumpfwahl (Spieler links vom Geber, aus 3 Karten, kein Passen) -----
 export function decideTrump(hand) {
   let best = { suit: null, score: -1 };
@@ -43,7 +52,7 @@ export function decideMit(hand, trump, seat, takerTeam) {
 // ---- Kartenwahl ----------------------------------------------------------
 // playedCards: alle in dieser Runde bereits gespielten Karten (öffentlich).
 // seatVoids: Array[4] von Sets mit Farben, in denen ein Sitz sicher leer ist.
-export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seatVoids = []) {
+export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seatVoids = [], cfg = DEFAULT_CFG) {
   const legal = legalCards(hand, trick, trump, mit);
   if (legal.length === 1) return legal[0];
 
@@ -84,17 +93,23 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
       if (winners.length) return byHighVal(winners)[0];
     }
     // B) Trümpfe ziehen mit unschlagbarem Trumpf + Länge (danach kann man sicher cashen).
-    if (bossTrumps.length && myTrumps.length >= 3) return byLowRank(bossTrumps).slice(-1)[0];
-    // C) WICHTIG: Solange Gegner Trümpfe haben, KEINE Asse/Könige/Damen anspielen —
-    //    die würden einfach abgestochen (freies Trumpfen!). Lieber niedrig rausgehen.
-    const lowNon = nonTrumps.filter(c => strengthOf(c) <= 2); // 9, 10, Bube
-    if (lowNon.length) {
-      const safe = lowNon.filter(c => !oppVoid(suitOf(c)));
-      return byLowVal(safe.length ? safe : lowNon)[0];
+    if (bossTrumps.length && myTrumps.length >= cfg.drawMinTrumps) return byLowRank(bossTrumps).slice(-1)[0];
+    // C) Asse cashen, auch wenn noch Trümpfe draußen sind? (optional/aggressiv)
+    if (cfg.cashAcesWhileTrumps) {
+      const cashAces = nonTrumps.filter(c => strengthOf(c) === 5 && isTopOfSuit(c) && !oppVoid(suitOf(c)));
+      if (cashAces.length) return cashAces[0];
+    } else {
+      // Sonst: solange Gegner Trümpfe haben, KEINE hohen Karten anspielen (würden gestochen).
+      const lowNon = nonTrumps.filter(c => strengthOf(c) <= cfg.leadLowMaxRank);
+      if (lowNon.length) {
+        const safe = lowNon.filter(c => !oppVoid(suitOf(c)));
+        return byLowVal(safe.length ? safe : lowNon)[0];
+      }
     }
-    // D) Nur hohe Nicht-Trümpfe übrig -> den am wenigsten wertvollen abspielen.
+    // D) Rest: sicher niedrig (nicht in Gegner-Voids), sonst niedrigste Karte.
+    const safeLows = nonTrumps.filter(c => !oppVoid(suitOf(c)));
+    if (safeLows.length) return byLowVal(safeLows)[0];
     if (nonTrumps.length) return byLowVal(nonTrumps)[0];
-    // E) Nur Trümpfe -> niedrigen Trumpf.
     return byLowRank(trumps)[0];
   }
 
@@ -126,10 +141,10 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
     // Nur per Trumpf zu gewinnen: abwägen, ob es sich lohnt.
     const cheapT = byLowRank(canWin)[0];
     const worth =
-      trickPoints >= 4 ||          // ordentlich Punkte im Stich
-      isBossTrump(cheapT) ||       // unüberstechbar -> risikofrei
-      (isLast && trickPoints > 0) || // als Letzter mit Punkten sicher
-      tStr(cheapT) <= 2;           // sehr billiger Trumpf (10/9) -> vertretbar
+      trickPoints >= cfg.trumpInMinPoints || // ordentlich Punkte im Stich
+      isBossTrump(cheapT) ||                  // unüberstechbar -> risikofrei
+      (isLast && trickPoints > 0) ||          // als Letzter mit Punkten sicher
+      tStr(cheapT) <= cfg.cheapTrumpMax;      // sehr billiger Trumpf -> vertretbar
     return worth ? cheapT : dump();
   }
 
