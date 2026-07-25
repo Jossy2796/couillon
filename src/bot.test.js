@@ -3,42 +3,59 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chooseCard } from './bot.js';
 
-// Szenario aus dem Feedback: Partner (Sitz 1) führt mit einem Trumpf.
-// Der Bot (Sitz 3, letzter) darf NICHT mit einem höheren Trumpf überstechen,
-// sondern soll Punkte mit einer Nicht-Trumpf-Karte schmieren.
-test('Bot übersticht den führenden Partner nicht', () => {
-  const hand = ['AH', 'KD', 'TD']; // AH = Trumpf (Herz), KD/TD = Karo
-  const trick = [
-    { seat: 0, card: 'AS' },  // Gegner spielt Nicht-Trumpf-Ass an
-    { seat: 1, card: '9H' },  // Partner trumpft -> führt
-    { seat: 2, card: '9D' },  // Gegner wirft ab
-  ];
+// --- Grundlegendes Zusammenspiel ---
+test('Bot übersticht den führenden Partner nicht (schmiert Punkte)', () => {
+  const hand = ['AH', 'KD', 'TD']; // AH = Trumpf
+  const trick = [{ seat: 0, card: 'AS' }, { seat: 1, card: '9H' }, { seat: 2, card: '9D' }];
   const card = chooseCard(hand, trick, 'H', false, 3);
-  assert.notEqual(card, 'AH', 'Bot darf den Trumpf-Ass nicht verschwenden');
-  assert.equal(card, 'KD', 'Bot schmiert den König (Punkte) auf den Partner-Stich');
+  assert.notEqual(card, 'AH', 'Trumpf-Ass nicht verschwenden');
+  assert.equal(card, 'KD', 'König als Punkte auf den sicheren Partner-Stich');
 });
 
-test('Partner führt, aber Stich unsicher (noch Gegner nach mir) -> niedrig, keine Punkte riskieren', () => {
-  // Partner = Sitz 0 führt mit niedrigem Trumpf; Bot = Sitz 2; Sitz 3 kommt noch.
-  const trick = [{ seat: 0, card: '9H' }];
+test('Partner führt unsicher (Gegner kommt noch) -> niedrig, keine Punkte riskieren', () => {
+  const trick = [{ seat: 0, card: '9H' }]; // Partner (Sitz 0) führt niedrig
   const card = chooseCard(['AS', 'KD', 'TD'], trick, 'H', false, 2);
-  assert.equal(card, 'TD', 'niedrigste Nicht-Trumpf-Karte, nicht das Ass verschenken');
-});
-
-test('Gegner führt: billig mit Nicht-Trumpf gewinnen statt zu trumpfen', () => {
-  const hand = ['KS', 'AS', '9H']; // 9H = Trumpf; KS/AS = Pik
-  const trick = [{ seat: 0, card: 'JS' }]; // Gegner führt Pik-Bube
-  const card = chooseCard(hand, trick, 'H', false, 1);
-  assert.equal(card, 'KS', 'mit dem König gewinnen, Ass und Trumpf sparen');
-});
-
-test('Kann nicht gewinnen -> niedrige Nicht-Trumpf-Karte abwerfen, Trumpf/Ass sparen', () => {
-  const hand = ['AD', 'TD', '9H']; // 9H Trumpf, AD/TD Karo
-  const trick = [
-    { seat: 0, card: 'AS' },
-    { seat: 1, card: 'KH' }, // Gegner trumpft hoch -> führt
-  ];
-  // Bot Sitz 2, kann KH (Trumpf) nur mit 9H nicht schlagen -> abwerfen; TD (0 Punkte)
-  const card = chooseCard(hand, trick, 'H', false, 2);
   assert.equal(card, 'TD');
+});
+
+test('Gegner führt: billig mit Nicht-Trumpf gewinnen', () => {
+  const card = chooseCard(['KS', 'AS', '9H'], [{ seat: 0, card: 'JS' }], 'H', false, 1);
+  assert.equal(card, 'KS', 'mit König gewinnen, Ass sparen');
+});
+
+test('Kann nicht gewinnen -> niedrige Nicht-Trumpf-Karte abwerfen', () => {
+  const trick = [{ seat: 0, card: 'AS' }, { seat: 1, card: 'KH' }];
+  const card = chooseCard(['AD', 'TD', '9H'], trick, 'H', false, 2);
+  assert.equal(card, 'TD');
+});
+
+// --- Neue, stärkere Strategien mit Kartengedächtnis ---
+test('Anspiel: Trümpfe ziehen mit unschlagbarem Trumpf + Länge', () => {
+  const hand = ['AH', 'KH', 'QH', '9S', 'TD', '9C']; // 3 Trümpfe, AH ist höchster
+  const card = chooseCard(hand, [], 'H', false, 0);
+  assert.equal(card, 'AH', 'höchsten Trumpf anspielen, um Gegner-Trümpfe zu ziehen');
+});
+
+test('Anspiel: Top-Ass einer Nebenfarbe cashen', () => {
+  const hand = ['AS', '9S', 'TD', '9C', 'JD', 'TC']; // keine Trümpfe (H), AS = Top-Pik
+  const card = chooseCard(hand, [], 'H', false, 0);
+  assert.equal(card, 'AS');
+});
+
+test('Gegner führt kleinen Stich: mittleren Trumpf NICHT verschwenden', () => {
+  const trick = [{ seat: 0, card: '9C' }]; // 0 Punkte
+  const card = chooseCard(['KH', 'TD', '9S'], trick, 'H', false, 1);
+  assert.notEqual(card, 'KH', 'König-Trumpf für 0 Punkte + Überstich-Risiko sparen');
+});
+
+test('Gegner führt Ass (Punkte): mit billigem Trumpf holen', () => {
+  const trick = [{ seat: 0, card: 'AC' }]; // 4 Punkte
+  const card = chooseCard(['9H', 'TD', 'KS'], trick, 'H', false, 1);
+  assert.equal(card, '9H', 'billiger Trumpf holt die 4 Punkte');
+});
+
+test('Anspiel: sicheren Gewinner cashen, wenn keine Trümpfe mehr draußen sind', () => {
+  const played = ['AH', 'KH', 'QH', 'JH', 'TH', '9H', 'QC', 'AS']; // alle Trümpfe + Pik-Ass weg
+  const card = chooseCard(['KS', '9D'], [], 'H', false, 0, played);
+  assert.equal(card, 'KS', 'König Pik ist jetzt unschlagbar -> cashen');
 });

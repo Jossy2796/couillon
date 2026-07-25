@@ -5,7 +5,7 @@
 import {
   makeDeck, shuffle, sortHand, legalCards, isLegal, trickWinnerIndex,
   currentWinnerSeat, pointsOf, teamOf, scoreRound, seatWithQS, CONFIG,
-  SUIT_SYMBOLS, SUIT_NAMES,
+  SUIT_SYMBOLS, SUIT_NAMES, isTrump, effSuit,
 } from './game.js';
 import { decideTrump, decideMit, chooseCard } from './bot.js';
 
@@ -50,6 +50,8 @@ export class Room {
     this.trickCount = 0;
     this.tricksWon = { A: 0, B: 0 };
     this.capturedPoints = { A: 0, B: 0 };
+    this.playedCards = [];                                   // öffentliches Kartengedächtnis
+    this.seatVoids = [new Set(), new Set(), new Set(), new Set()]; // erkannte Void-Farben je Sitz
 
     this.board = { A: this.config.START_STRICHE, B: this.config.START_STRICHE };
     this.history = [];
@@ -190,6 +192,8 @@ export class Room {
     this.trickCount = 0;
     this.tricksWon = { A: 0, B: 0 };
     this.capturedPoints = { A: 0, B: 0 };
+    this.playedCards = [];
+    this.seatVoids = [new Set(), new Set(), new Set(), new Set()];
 
     this.phase = 'trump';
     this.turnSeat = eldest;
@@ -311,6 +315,16 @@ export class Room {
   applyPlay(seat, card) {
     const hand = this.hands[seat];
     if (!isLegal(card, hand, this.currentTrick, this.trump, this.mit)) return;
+
+    // Void-Erkennung: Wer eine ANDERE Nicht-Trumpf-Farbe abwirft, obwohl eine Farbe
+    // angespielt wurde, hat diese Anspielfarbe sicher nicht (öffentliche Info).
+    if (this.currentTrick.length > 0) {
+      const ledEff = effSuit(this.currentTrick[0].card, this.trump, this.mit);
+      if (!isTrump(card, this.trump, this.mit) && effSuit(card, this.trump, this.mit) !== ledEff) {
+        this.seatVoids[seat].add(ledEff);
+      }
+    }
+    this.playedCards.push(card);
     this.hands[seat] = hand.filter(c => c !== card);
     this.currentTrick.push({ seat, card });
 
@@ -441,7 +455,7 @@ export class Room {
     } else if (this.phase === 'mit') {
       this.applyMit(decideMit(this.hands[seat], this.trump, seat, this.trumpMakerTeam));
     } else if (this.phase === 'playing' && !this._resolving) {
-      this.applyPlay(seat, chooseCard(this.hands[seat], this.currentTrick, this.trump, this.mit, seat));
+      this.applyPlay(seat, chooseCard(this.hands[seat], this.currentTrick, this.trump, this.mit, seat, this.playedCards, this.seatVoids));
     }
   }
 
