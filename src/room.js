@@ -7,7 +7,7 @@ import {
   currentWinnerSeat, pointsOf, teamOf, scoreRound, seatWithQS, CONFIG,
   SUIT_SYMBOLS, SUIT_NAMES, isTrump, effSuit,
 } from './game.js';
-import { decideTrump, decideMit, chooseCard } from './bot.js';
+import { decideTrump, decideMit, chooseCard, chooseCardHeuristic, chooseCardEasy } from './bot.js';
 
 const RANK_DISPLAY = { '9': '9', T: '10', J: 'B', Q: 'D', K: 'K', A: 'A' };
 export function formatCard(card) { return RANK_DISPLAY[card[0]] + SUIT_SYMBOLS[card[1]]; }
@@ -29,6 +29,7 @@ export class Room {
     this.phase = 'lobby';
     this.log = [];
     this.config = { ...CONFIG };
+    this.botLevel = 'medium'; // 'easy' | 'medium' | 'hard'
 
     // Rundenzustand
     this.dealerSeat = 0;
@@ -145,6 +146,11 @@ export class Room {
     switch (msg.type) {
       case 'addBot': if (this.isHost(playerId)) { this.addBot(msg.seat); this.emit(); } break;
       case 'removeSeat': if (this.isHost(playerId)) { this.removeSeat(msg.seat); this.emit(); } break;
+      case 'setLevel':
+        if (this.isHost(playerId) && this.phase === 'lobby' && ['easy', 'medium', 'hard'].includes(msg.level)) {
+          this.botLevel = msg.level; this.emit();
+        }
+        break;
       case 'start': if (this.isHost(playerId)) this.startMatch(); break;
       case 'trump': this.playerTrump(playerId, msg); break;
       case 'mit': this.playerMit(playerId, msg); break;
@@ -455,8 +461,22 @@ export class Room {
     } else if (this.phase === 'mit') {
       this.applyMit(decideMit(this.hands[seat], this.trump, seat, this.trumpMakerTeam));
     } else if (this.phase === 'playing' && !this._resolving) {
-      this.applyPlay(seat, chooseCard(this.hands[seat], this.currentTrick, this.trump, this.mit, seat, this.playedCards, this.seatVoids, this.hands.map(h => h.length), this.trumpMakerTeam, this.qsHolder));
+      this.applyPlay(seat, this.pickBotCard(seat));
     }
+  }
+
+  // Kartenwahl je nach Bot-Stärke. Getrennte Menschen spielen immer "hard",
+  // damit ihr Platz während einer Unterbrechung nicht schwächelt.
+  pickBotCard(seat) {
+    const occ = this.seats[seat];
+    const level = (occ && occ.isBot) ? this.botLevel : 'hard';
+    if (level === 'easy') {
+      return chooseCardEasy(this.hands[seat], this.currentTrick, this.trump, this.mit);
+    }
+    if (level === 'medium') {
+      return chooseCardHeuristic(this.hands[seat], this.currentTrick, this.trump, this.mit, seat, this.playedCards, this.seatVoids);
+    }
+    return chooseCard(this.hands[seat], this.currentTrick, this.trump, this.mit, seat, this.playedCards, this.seatVoids, this.hands.map(h => h.length), this.trumpMakerTeam, this.qsHolder);
   }
 
   // ---- Zustand nach außen ----
@@ -482,6 +502,7 @@ export class Room {
       phase: this.phase,
       you,
       isHost: playerId === this.hostId,
+      botLevel: this.botLevel,
       players: this.playersPublic(),
       handCounts: this.hands.map(h => h.length),
       dealerSeat: this.dealerSeat,

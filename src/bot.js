@@ -171,6 +171,25 @@ function localWinnerIdx(trick, trump, mit) {
   return best;
 }
 
+// ---- Leichte KI (Schwierigkeit "Leicht") ---------------------------------
+// Kein Kartengedächtnis, viel Zufall, gieriges Stechen — typische Anfängerfehler.
+export function chooseCardEasy(hand, trick, trump, mit) {
+  const legal = legalCards(hand, trick, trump, mit);
+  if (legal.length === 1) return legal[0];
+  const rnd = arr => arr[Math.floor(Math.random() * arr.length)];
+  if (Math.random() < 0.4) return rnd(legal);            // reiner Zufallszug
+  if (trick.length === 0) {
+    const aces = legal.filter(c => !isTrump(c, trump, mit) && strengthOf(c) === 5);
+    if (aces.length && Math.random() < 0.5) return aces[0]; // haut gern ein Ass raus
+    return rnd(legal);
+  }
+  const winning = trick[localWinnerIdx(trick, trump, mit)].card;
+  const ledNat = suitOf(trick[0].card);
+  const canWin = legal.filter(c => beats(c, winning, ledNat, trump, mit));
+  if (canWin.length) return rnd(canWin);                 // greift Stiche gierig ab (auch Partner)
+  return rnd(legal);
+}
+
 // ================= PIMC (Perfect Information Monte Carlo) =================
 // Vorausschauende Suche mit Gegnerkarten-Schätzung: viele plausible
 // Kartenverteilungen der anderen samplen (konsistent mit gesehenen Karten +

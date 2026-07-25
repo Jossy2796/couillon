@@ -103,6 +103,18 @@ input::placeholder { color: rgba(255,255,255,.4); }
 .seat-row .sname { flex: 1; font-weight: 600; }
 .seat-row .stag { font-size: 12px; opacity: .7; }
 .seat-row.empty .sname { opacity: .5; font-weight: 400; }
+.level-picker { margin: 2px 0 16px; text-align: center; }
+.lp-label { display: block; font-size: 13px; opacity: .85; margin-bottom: 8px; }
+.lp-btns { display: flex; gap: 8px; justify-content: center; }
+.lp-btn {
+  flex: 1; padding: 11px 6px; border-radius: 12px; font-size: 15px; font-weight: 700;
+  border: 2px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: #fff;
+  cursor: pointer; transition: transform .1s, background .12s, border-color .12s;
+}
+.lp-btn.active { border-color: var(--gold); background: linear-gradient(180deg, var(--gold), var(--gold-dark)); color: #3a2c05; }
+.lp-btn:disabled { cursor: default; }
+.lp-btn:not(:disabled):active { transform: scale(.95); }
+.lp-desc { font-size: 12px; opacity: .75; margin: 9px 0 0; min-height: 16px; }
 .host-controls { text-align: center; }
 .hint { font-size: 13px; opacity: .7; text-align: center; margin: 10px 0 0; }
 

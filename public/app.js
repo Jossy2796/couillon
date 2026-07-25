@@ -154,6 +154,19 @@ function renderLobby(s) {
       right;
     list.appendChild(row);
   }
+  // Bot-Stärke
+  const level = s.botLevel || 'medium';
+  const descs = {
+    easy: 'Leicht: spielt oft zufällig – gut für Einsteiger.',
+    medium: 'Mittel: solide, mit Kartengedächtnis.',
+    hard: 'Schwer: rechnet voraus (PIMC) – sehr stark.',
+  };
+  document.querySelectorAll('.lp-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.level === level);
+    b.disabled = !s.isHost;
+  });
+  $('lpDesc').textContent = descs[level];
+
   $('hostControls').classList.toggle('hidden', !s.isHost);
   $('waitHost').classList.toggle('hidden', s.isHost);
   updateShareButtons();
@@ -433,6 +446,12 @@ function bindEvents() {
     if (rem) send({ type: 'removeSeat', seat: +rem.dataset.removeseat });
   });
   $('btnStart').addEventListener('click', () => send({ type: 'start' }));
+
+  // Bot-Stärke wählen (nur Gastgeber)
+  $('levelPicker').addEventListener('click', e => {
+    const b = e.target.closest('.lp-btn');
+    if (b && !b.disabled) send({ type: 'setLevel', level: b.dataset.level });
+  });
 
   // Trumpf bestimmen
   document.querySelectorAll('.suit-btn').forEach(btn => {
