@@ -15,6 +15,7 @@ export const DEFAULT_CFG = {
   trumpInMinPoints: 3,       // schon ab 3 Punkten riskant einstechen
   cheapTrumpMax: 3,          // Trümpfe bis Stärke 3 gelten als "billig" (großzügiger einsetzen)
   leadLowMaxRank: 2,         // "niedrige" Anspielkarte (nur wenn Asse zurückgehalten werden)
+  useMitInfo: true,          // PIMC: Pik-Dame fest dem bekannten Mit-Halter zuordnen
 };
 
 // ---- Trumpfwahl (Spieler links vom Geber, aus 3 Karten, kein Passen) -----
@@ -170,7 +171,7 @@ function localWinnerIdx(trick, trump, mit) {
 // handCounts: aktuelle Restkartenzahl je Sitz (öffentlich). takerTeam: Trumpfmacher-Team.
 const PIMC_SAMPLES = 24;
 
-export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seatVoids = [], handCounts = null, takerTeam = null, cfg = DEFAULT_CFG) {
+export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seatVoids = [], handCounts = null, takerTeam = null, qsHolder = null, cfg = DEFAULT_CFG) {
   const legal = legalCards(hand, trick, trump, mit);
   if (legal.length === 1) return legal[0];
   if (!handCounts || takerTeam == null) {
@@ -187,10 +188,16 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
     return chooseCardHeuristic(hand, trick, trump, mit, seat, playedCards, seatVoids, cfg);
   }
 
+  // Öffentliche Info: bei "Mit" hält der Ansager die Pik-Dame -> fest zuordnen.
+  const fixed = {};
+  if (cfg.useMitInfo && mit && qsHolder != null && qsHolder !== seat && unseen.includes('QS')) {
+    fixed.QS = qsHolder;
+  }
+
   const botTeam = teamOf(seat);
   const scores = new Map(legal.map(c => [c, 0]));
   for (let k = 0; k < PIMC_SAMPLES; k++) {
-    const dealt = determinize(unseen, need, seatVoids, esOf);
+    const dealt = determinize(unseen, need, seatVoids, esOf, fixed);
     for (const cand of legal) {
       const hands = { [seat]: hand.filter(c => c !== cand) };
       for (const o of others) hands[o] = dealt[o].slice();
@@ -212,16 +219,24 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
   return best;
 }
 
-// Verteilt die unsichtbaren Karten zufällig auf die anderen Sitze,
-// gemäß deren Restkartenzahl und ohne bekannte Void-Farben.
-function determinize(unseen, need, voids, esOf) {
+// Verteilt die unsichtbaren Karten zufällig auf die anderen Sitze, gemäß
+// Restkartenzahl, ohne bekannte Void-Farben, und mit festen Zuordnungen
+// (fixed = { Karte: Sitz }, z.B. Pik-Dame beim bekannten Mit-Halter).
+function determinize(unseen, need, voids, esOf, fixed = {}) {
   const seats = Object.keys(need).map(Number);
+  const baseHands = {}; const baseRem = {}; const pool = [];
+  seats.forEach(s => { baseHands[s] = []; baseRem[s] = need[s]; });
+  for (const c of unseen) {
+    const fs = fixed[c];
+    if (fs != null && baseRem[fs] > 0) { baseHands[fs].push(c); baseRem[fs]--; }
+    else pool.push(c);
+  }
+  const eligCount = card => { const s = esOf(card); let n = 0; for (const x of seats) if (baseRem[x] > 0 && !(voids[x] && voids[x].has(s))) n++; return n; };
   for (let attempt = 0; attempt < 25; attempt++) {
-    const rem = {}; seats.forEach(s => rem[s] = need[s]);
-    const hands = {}; seats.forEach(s => hands[s] = []);
-    const order = unseen.slice();
+    const rem = { ...baseRem };
+    const hands = {}; seats.forEach(s => hands[s] = baseHands[s].slice());
+    const order = pool.slice();
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-    const eligCount = card => { const s = esOf(card); let n = 0; for (const x of seats) if (rem[x] > 0 && !(voids[x] && voids[x].has(s))) n++; return n; };
     order.sort((a, b) => eligCount(a) - eligCount(b)); // am stärksten eingeschränkte zuerst
     let ok = true;
     for (const card of order) {
@@ -233,10 +248,11 @@ function determinize(unseen, need, voids, esOf) {
     }
     if (ok) return hands;
   }
-  const rem = {}; seats.forEach(s => rem[s] = need[s]); const hands = {}; seats.forEach(s => hands[s] = []);
-  const cards = unseen.slice();
+  // Fallback: feste Zuordnungen behalten, Rest ohne Void-Beachtung verteilen.
+  const rem = { ...baseRem }; const hands = {}; seats.forEach(s => hands[s] = baseHands[s].slice());
+  const cards = pool.slice();
   for (let i = cards.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cards[i], cards[j]] = [cards[j], cards[i]]; }
-  let idx = 0; for (const s of seats) for (let n = 0; n < need[s]; n++) hands[s].push(cards[idx++]);
+  let idx = 0; for (const s of seats) while (rem[s]-- > 0) hands[s].push(cards[idx++]);
   return hands;
 }
 
