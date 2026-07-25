@@ -3,6 +3,7 @@
 import {
   SUITS, suitOf, strengthOf, pointsOf, legalCards, currentWinnerSeat,
   partnerOf, teamOf, beats, isTrump, trumpStrength, makeDeck,
+  effSuit, determineRoundWinner,
 } from './game.js';
 
 const ALL_CARDS = makeDeck();
@@ -52,7 +53,7 @@ export function decideMit(hand, trump, seat, takerTeam) {
 // ---- Kartenwahl ----------------------------------------------------------
 // playedCards: alle in dieser Runde bereits gespielten Karten (öffentlich).
 // seatVoids: Array[4] von Sets mit Farben, in denen ein Sitz sicher leer ist.
-export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seatVoids = [], cfg = DEFAULT_CFG) {
+export function chooseCardHeuristic(hand, trick, trump, mit, seat, playedCards = [], seatVoids = [], cfg = DEFAULT_CFG) {
   const legal = legalCards(hand, trick, trump, mit);
   if (legal.length === 1) return legal[0];
 
@@ -159,4 +160,115 @@ function localWinnerIdx(trick, trump, mit) {
     if (beats(trick[i].card, trick[best].card, ledNat, trump, mit)) best = i;
   }
   return best;
+}
+
+// ================= PIMC (Perfect Information Monte Carlo) =================
+// Vorausschauende Suche mit Gegnerkarten-Schätzung: viele plausible
+// Kartenverteilungen der anderen samplen (konsistent mit gesehenen Karten +
+// erkannten Voids), jede bis zum Rundenende durchspielen (Heuristik als
+// Rollout-Policy) und die Karte mit dem besten Schnitt wählen.
+// handCounts: aktuelle Restkartenzahl je Sitz (öffentlich). takerTeam: Trumpfmacher-Team.
+const PIMC_SAMPLES = 24;
+
+export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seatVoids = [], handCounts = null, takerTeam = null, cfg = DEFAULT_CFG) {
+  const legal = legalCards(hand, trick, trump, mit);
+  if (legal.length === 1) return legal[0];
+  if (!handCounts || takerTeam == null) {
+    return chooseCardHeuristic(hand, trick, trump, mit, seat, playedCards, seatVoids, cfg);
+  }
+
+  const esOf = c => effSuit(c, trump, mit);
+  const seen = new Set([...hand, ...playedCards, ...trick.map(t => t.card)]);
+  const unseen = ALL_CARDS.filter(c => !seen.has(c));
+  const others = [0, 1, 2, 3].filter(s => s !== seat);
+  const need = {}; let sum = 0;
+  for (const o of others) { need[o] = handCounts[o]; sum += handCounts[o]; }
+  if (sum !== unseen.length) {
+    return chooseCardHeuristic(hand, trick, trump, mit, seat, playedCards, seatVoids, cfg);
+  }
+
+  const botTeam = teamOf(seat);
+  const scores = new Map(legal.map(c => [c, 0]));
+  for (let k = 0; k < PIMC_SAMPLES; k++) {
+    const dealt = determinize(unseen, need, seatVoids, esOf);
+    for (const cand of legal) {
+      const hands = { [seat]: hand.filter(c => c !== cand) };
+      for (const o of others) hands[o] = dealt[o].slice();
+      const rTrick = trick.map(t => ({ seat: t.seat, card: t.card }));
+      rTrick.push({ seat, card: cand });
+      const played = playedCards.slice(); played.push(cand);
+      const voids = seatVoids.map(s => new Set(s));
+      if (trick.length > 0) {
+        const le = esOf(trick[0].card);
+        if (!isTrump(cand, trump, mit) && esOf(cand) !== le) voids[seat].add(le);
+      }
+      const captured = { A: 0, B: 0 }, tricksWon = { A: 0, B: 0 };
+      rollout(hands, rTrick, (seat + 1) % 4, trump, mit, played, voids, captured, tricksWon, cfg);
+      scores.set(cand, scores.get(cand) + rolloutScore(captured, tricksWon, botTeam, takerTeam, mit));
+    }
+  }
+  let best = legal[0], bestScore = -Infinity;
+  for (const c of legal) { const s = scores.get(c); if (s > bestScore) { bestScore = s; best = c; } }
+  return best;
+}
+
+// Verteilt die unsichtbaren Karten zufällig auf die anderen Sitze,
+// gemäß deren Restkartenzahl und ohne bekannte Void-Farben.
+function determinize(unseen, need, voids, esOf) {
+  const seats = Object.keys(need).map(Number);
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const rem = {}; seats.forEach(s => rem[s] = need[s]);
+    const hands = {}; seats.forEach(s => hands[s] = []);
+    const order = unseen.slice();
+    for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+    const eligCount = card => { const s = esOf(card); let n = 0; for (const x of seats) if (rem[x] > 0 && !(voids[x] && voids[x].has(s))) n++; return n; };
+    order.sort((a, b) => eligCount(a) - eligCount(b)); // am stärksten eingeschränkte zuerst
+    let ok = true;
+    for (const card of order) {
+      const s = esOf(card);
+      const cand = seats.filter(x => rem[x] > 0 && !(voids[x] && voids[x].has(s)));
+      if (!cand.length) { ok = false; break; }
+      const pick = cand[Math.floor(Math.random() * cand.length)];
+      hands[pick].push(card); rem[pick]--;
+    }
+    if (ok) return hands;
+  }
+  const rem = {}; seats.forEach(s => rem[s] = need[s]); const hands = {}; seats.forEach(s => hands[s] = []);
+  const cards = unseen.slice();
+  for (let i = cards.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [cards[i], cards[j]] = [cards[j], cards[i]]; }
+  let idx = 0; for (const s of seats) for (let n = 0; n < need[s]; n++) hands[s].push(cards[idx++]);
+  return hands;
+}
+
+// Spielt eine determinisierte Hand mit der Heuristik bis zum Ende durch.
+function rollout(hands, trick, turnSeat, trump, mit, played, voids, captured, tricksWon, cfg) {
+  let cur = turnSeat, guard = 0;
+  while (guard++ < 40) {
+    if (trick.length === 4) {
+      const w = trick[localWinnerIdx(trick, trump, mit)].seat;
+      captured[teamOf(w)] += trick.reduce((s, t) => s + pointsOf(t.card), 0);
+      tricksWon[teamOf(w)]++;
+      trick.length = 0; cur = w;
+      if (!hands[0].length && !hands[1].length && !hands[2].length && !hands[3].length) break;
+    }
+    const seat = cur;
+    const card = chooseCardHeuristic(hands[seat], trick, trump, mit, seat, played, voids, cfg);
+    if (trick.length > 0) {
+      const le = effSuit(trick[0].card, trump, mit);
+      if (!isTrump(card, trump, mit) && effSuit(card, trump, mit) !== le) voids[seat].add(le);
+    }
+    played.push(card);
+    hands[seat] = hands[seat].filter(c => c !== card);
+    trick.push({ seat, card });
+    cur = (cur + 1) % 4;
+  }
+}
+
+function rolloutScore(captured, tricksWon, botTeam, takerTeam, mit) {
+  const oppTeam = botTeam === 'A' ? 'B' : 'A';
+  const winner = determineRoundWinner(captured, takerTeam);
+  const vole = tricksWon[winner] === 6;
+  const spielwert = (mit ? 2 : 1) + (vole ? 1 : 0);
+  const benefit = (winner === botTeam ? spielwert : 0) - (takerTeam === botTeam && winner !== botTeam ? 1 : 0);
+  return benefit * 100 + (captured[botTeam] - captured[oppTeam]); // Sieg zählt am meisten, Punktemarge als Feinschliff
 }

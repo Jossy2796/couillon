@@ -455,7 +455,7 @@ export class Room {
     } else if (this.phase === 'mit') {
       this.applyMit(decideMit(this.hands[seat], this.trump, seat, this.trumpMakerTeam));
     } else if (this.phase === 'playing' && !this._resolving) {
-      this.applyPlay(seat, chooseCard(this.hands[seat], this.currentTrick, this.trump, this.mit, seat, this.playedCards, this.seatVoids));
+      this.applyPlay(seat, chooseCard(this.hands[seat], this.currentTrick, this.trump, this.mit, seat, this.playedCards, this.seatVoids, this.hands.map(h => h.length), this.trumpMakerTeam));
     }
   }
 
