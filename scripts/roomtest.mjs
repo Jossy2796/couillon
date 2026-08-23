@@ -62,5 +62,30 @@ if (r._timer) clearTimeout(r._timer);
 ok(r.knocks.length === 1 && r.knocks[0].label === 'Klopfen' && r.knocks[0].seat === 1, 'Klopfen wird in knocks erfasst');
 ok(r.stateFor('h1').knocks.length === 1, 'knocks im State sichtbar');
 
+// --- autoAct-Schutz: verwaister/verfrühter Timer darf NICHT für einen Menschen spielen ---
+r = fresh();
+r.phase = 'playing'; r.trump = 'H'; r.mit = false; r.turnSeat = 0; r.currentTrick = [];
+r.hands = [['9C', 'TD'], ['AH'], ['KH'], ['QH']];
+const n0 = r.hands[0].length;
+// Frist noch NICHT abgelaufen -> autoAct darf nichts tun (verhindert "Bot spielt sofort")
+r.autoForSeat = 0; r.autoDeadline = Date.now() + 10000;
+r.autoAct(); if (r._timer) { clearTimeout(r._timer); r._timer = null; }
+ok(r.hands[0].length === n0, 'autoAct spielt NICHT vor Ablauf der 15s-Frist (Anti-Instant-Bug)');
+// Falscher Sitz in autoForSeat (verwaister Timer eines anderen Zugs) -> nichts tun
+r.autoForSeat = 2; r.autoDeadline = Date.now() - 100;
+r.autoAct(); if (r._timer) { clearTimeout(r._timer); r._timer = null; }
+ok(r.hands[0].length === n0, 'autoAct ignoriert Timer, der nicht zu diesem Sitz gehört');
+// Frist wirklich abgelaufen -> jetzt darf der Bot einen Zug machen
+r.autoForSeat = 0; r.autoDeadline = Date.now() - 100;
+r.autoAct(); if (r._timer) { clearTimeout(r._timer); r._timer = null; }
+ok(r.hands[0].length === n0 - 1, 'autoAct spielt nach abgelaufener Frist');
+// Assist an -> darf sofort spielen (unabhängig von der Frist)
+r = fresh();
+r.phase = 'playing'; r.trump = 'H'; r.mit = false; r.turnSeat = 0; r.currentTrick = [];
+r.hands = [['9C', 'TD'], ['AH'], ['KH'], ['QH']];
+r.seats[0].assist = true; r.autoForSeat = null; r.autoDeadline = null;
+r.autoAct(); if (r._timer) { clearTimeout(r._timer); r._timer = null; }
+ok(r.hands[0].length === 1, 'autoAct spielt bei Assist sofort');
+
 console.log(`\n${pass} ok, ${fail} fehlgeschlagen`);
 process.exit(fail ? 1 : 0);

@@ -408,6 +408,7 @@ export class Room {
       this.trickComplete = true;
       this._resolving = true;
       this.emit();
+      if (this._timer) clearTimeout(this._timer); // alten (z.B. 15s-)Timer NICHT verwaisen lassen
       this._timer = setTimeout(() => this.resolveTrick(), TRICK_PAUSE);
       return;
     }
@@ -543,6 +544,13 @@ export class Room {
     const seat = this.turnSeat;
     const occ = this.seats[seat];
     if (!occ) return;
+    // SICHERHEIT: Einen Menschen NUR automatisch spielen, wenn er es selbst aktiviert hat
+    // (assist/muck) ODER seine 15s-Frist für GENAU diesen Zug wirklich abgelaufen ist.
+    // Verhindert, dass ein verwaister/verfrühter Timer "aus dem Nichts" für einen
+    // anwesenden Spieler zieht (Ursache des "Bot spielt sofort für mich").
+    if (!occ.isBot && !this.isFullAuto(seat)) {
+      if (this.autoForSeat !== seat || this.autoDeadline == null || Date.now() < this.autoDeadline - 250) return;
+    }
     if (this.phase === 'trump') {
       this.applyTrump(seat, decideTrump(this.hands[seat]));
     } else if (this.phase === 'mit') {
