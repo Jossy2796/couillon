@@ -90,6 +90,15 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'leaveRoom') {
+      const room = rooms.get(ws.roomCode);
+      const map = clients.get(ws.roomCode);
+      if (map && map.get(ws.playerId) === ws) map.delete(ws.playerId);
+      if (room && ws.playerId) { const code = ws.roomCode; room.leaveSeat(ws.playerId); broadcast(code); }
+      ws.roomCode = null; ws.playerId = null;
+      return;
+    }
+
     // Ab hier: Spielaktionen — Client muss einem Raum zugeordnet sein.
     const room = rooms.get(ws.roomCode);
     if (!room || !ws.playerId) return;

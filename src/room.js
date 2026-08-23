@@ -13,7 +13,9 @@ const RANK_DISPLAY = { '9': '9', T: '10', J: 'B', Q: 'D', K: 'K', A: 'A' };
 export function formatCard(card) { return RANK_DISPLAY[card[0]] + SUIT_SYMBOLS[card[1]]; }
 
 const BOT_DELAY = 850;      // ms, natürlicheres Tempo für Bot-Züge
-const DISCONNECT_GRACE = 12000; // ms, getrennter Mensch darf sich neu verbinden, bevor ein Bot übernimmt
+const TURN_TIMEOUT = 10000; // ms, ein Mensch hat pro Zug 10s; danach spielt der Bot EINEN Zug (= "Strike")
+const ASSIST_DELAY = 3000;  // ms, Voll-Übernahme (2 Strikes ODER "Bot spielt für mich"): Bot wartet 3s vor jedem Zug
+const MISS_LIMIT = 2;       // so viele verpasste Züge hintereinander -> Bot übernimmt komplett
 const TRICK_PAUSE = 1300;   // ms, fertigen Stich kurz zeigen
 const HAND_PAUSE = 8000;    // ms, Rundenergebnis zeigen, dann automatisch weiter
 
@@ -84,6 +86,7 @@ export class Room {
     if (existing >= 0) {
       this.seats[existing].connected = true;
       if (name) this.seats[existing].name = name;
+      this.seats[existing].missStreak = 0; // zurück -> frische 10s, beendet automatische Voll-Übernahme
       this.touch();
       this.scheduleAuto();
       return { ok: true, seat: existing, reconnect: true };
@@ -110,6 +113,24 @@ export class Room {
     const seat = this.seatOf(playerId);
     if (seat < 0) return;
     this.seats[seat].connected = false;
+    this.touch();
+    this.scheduleAuto();
+  }
+
+  // Spieler verlässt den Raum bewusst. In der Lobby wird der Platz frei; im
+  // laufenden Spiel bleibt der Platz und ein Bot übernimmt.
+  leaveSeat(playerId) {
+    const seat = this.seatOf(playerId);
+    if (seat < 0) return;
+    if (this.phase === 'lobby') {
+      this.seats[seat] = null;
+      if (this.hostId === playerId) {
+        const nextHost = this.seats.find(p => p && !p.isBot);
+        this.hostId = nextHost ? nextHost.playerId : null;
+      }
+    } else {
+      this.seats[seat].connected = false;
+    }
     this.touch();
     this.scheduleAuto();
   }
@@ -156,10 +177,48 @@ export class Room {
       case 'mit': this.playerMit(playerId, msg); break;
       case 'kontra': this.playerKontra(playerId, msg); break;
       case 'play': this.playerPlay(playerId, msg); break;
+      case 'assist': this.setAssist(playerId, !!msg.value); break;
+      case 'resume': this.resumeControl(playerId); break;
+      case 'muck': this.playerMuck(playerId); break;
       case 'continue': if (this.phase === 'roundEnd') this.nextRound(); break;
       case 'rematch': if (this.isHost(playerId) && this.phase === 'matchEnd') this.startMatch(); break;
       default: break;
     }
+  }
+
+  // Ein Mensch hat aktiv gehandelt -> "verpasste Züge"-Zähler zurücksetzen.
+  humanActed(seat) { if (this.seats[seat] && !this.seats[seat].isBot) this.seats[seat].missStreak = 0; }
+
+  // "Bot spielt für mich" an/aus (kurz weg). Aus -> Zähler zurücksetzen.
+  setAssist(playerId, value) {
+    const seat = this.seatOf(playerId);
+    if (seat < 0 || !this.seats[seat] || this.seats[seat].isBot) return;
+    this.seats[seat].assist = value;
+    if (!value) this.seats[seat].missStreak = 0;
+    this.emit();
+    this.scheduleAuto();
+  }
+
+  // Spieler übernimmt wieder selbst (nach automatischer Voll-Übernahme).
+  resumeControl(playerId) {
+    const seat = this.seatOf(playerId);
+    if (seat < 0 || !this.seats[seat]) return;
+    this.seats[seat].assist = false;
+    this.seats[seat].missStreak = 0;
+    this.emit();
+    this.scheduleAuto();
+  }
+
+  // Restliche (wertlose) Karten abwerfen: Bot spielt sie bis Rundenende zügig aus.
+  playerMuck(playerId) {
+    const seat = this.seatOf(playerId);
+    if (seat < 0 || this.phase !== 'playing' || !this.seats[seat] || this.seats[seat].isBot) return;
+    const hand = this.hands[seat];
+    if (!hand.length || !hand.every(c => !isTrump(c, this.trump, this.mit) && pointsOf(c) === 0)) return;
+    this.seats[seat].muck = true;
+    this.logMsg(`${this.seatName(seat)} wirft die restlichen (wertlosen) Karten ab.`);
+    this.emit();
+    this.scheduleAuto();
   }
 
   startMatch() {
@@ -200,6 +259,9 @@ export class Room {
     this.capturedPoints = { A: 0, B: 0 };
     this.playedCards = [];
     this.seatVoids = [new Set(), new Set(), new Set(), new Set()];
+    this.knocks = []; // wer hat diese Runde geklopft/Re gemacht (für die Anzeige)
+    // Pro Runde: verpasste-Züge-Zähler und "Abwerfen" zurücksetzen ("Bot spielt für mich" bleibt bestehen).
+    for (const p of this.seats) if (p) { p.missStreak = 0; p.muck = false; }
 
     this.phase = 'trump';
     this.turnSeat = eldest;
@@ -215,6 +277,7 @@ export class Room {
     const seat = this.seatOf(playerId);
     if (seat !== this.turnSeat) return;
     if (!SUIT_LIST.includes(msg.suit)) return;
+    this.humanActed(seat);
     this.applyTrump(seat, msg.suit);
   }
 
@@ -238,6 +301,7 @@ export class Room {
   playerMit(playerId, msg) {
     if (this.phase !== 'mit') return;
     if (this.seatOf(playerId) !== this.qsHolder) return;
+    this.humanActed(this.qsHolder);
     this.applyMit(!!msg.value);
   }
 
@@ -274,6 +338,7 @@ export class Room {
     const seat = this.seatOf(playerId);
     if (seat < 0 || teamOf(seat) !== this.kontraTurn) return;
     if (this.kontraPassed.has(seat)) return; // hat schon gepasst
+    this.humanActed(seat);
     this.applyKontra(seat, msg.action === 'raise' ? 'raise' : 'pass');
   }
 
@@ -281,6 +346,7 @@ export class Room {
     if (action === 'raise') {
       this.spielwertBase += 1;
       const label = this.kontraTurn === this.mitTeam ? 'Re' : 'Klopfen';
+      this.knocks.push({ seat, team: this.kontraTurn, label, spielwert: this.spielwertBase });
       this.logMsg(`${this.seatName(seat)} (Team ${this.kontraTurn}): ${label}! Spielwert jetzt ${this.spielwertBase}.`);
       this.kontraTurn = this.kontraTurn === 'A' ? 'B' : 'A';
       this.kontraPassed = new Set();
@@ -315,6 +381,7 @@ export class Room {
     if (this.phase !== 'playing' || this._resolving) return;
     const seat = this.seatOf(playerId);
     if (seat !== this.turnSeat) return;
+    this.humanActed(seat);
     this.applyPlay(seat, msg.card);
   }
 
@@ -424,45 +491,60 @@ export class Room {
       return;
     }
     if (this.phase === 'kontra') {
-      // Bots/getrennte Spieler des Teams passen EINZELN; Menschen entscheiden selbst.
-      const autoSeat = this.teamSeatsOf(this.kontraTurn).find(s =>
-        !this.kontraPassed.has(s) && this.seats[s] && (this.seats[s].isBot || !this.seats[s].connected));
-      if (autoSeat != null) this._timer = setTimeout(() => this.autoKontra(autoSeat), BOT_DELAY);
+      const seatsTurn = this.teamSeatsOf(this.kontraTurn).filter(s => !this.kontraPassed.has(s) && this.seats[s]);
+      // Bots und Voll-Übernahme passen zügig; ein Mensch bekommt 10s, dann Auto-Pass (= Strike).
+      const autoNow = seatsTurn.find(s => this.seats[s].isBot || this.isFullAuto(s));
+      if (autoNow != null) { this._timer = setTimeout(() => this.autoKontra(autoNow, false), BOT_DELAY); return; }
+      const humanTurn = seatsTurn.find(s => !this.seats[s].isBot);
+      if (humanTurn != null) this._timer = setTimeout(() => this.autoKontra(humanTurn, true), TURN_TIMEOUT);
       return;
     }
     if (!['trump', 'mit', 'playing'].includes(this.phase)) return;
 
-    const occ = this.seats[this.turnSeat];
+    const seat = this.turnSeat;
+    const occ = this.seats[seat];
     if (!occ) return;
-    const isBot = occ.isBot;
-    const isDroppedHuman = !occ.isBot && !occ.connected;
-    if (!isBot && !isDroppedHuman) return; // verbundener Mensch -> auf ihn warten
-    // Getrennter Mensch bekommt Zeit zum Reconnect, bevor ein Bot für ihn übernimmt.
-    this._timer = setTimeout(() => this.autoAct(), isBot ? BOT_DELAY : DISCONNECT_GRACE);
+    if (occ.isBot) { this._timer = setTimeout(() => this.autoAct(false), BOT_DELAY); return; }
+    if (this.isFullAuto(seat)) {
+      // Voll-Übernahme: Abwerfen zügig, sonst 3s Pause, damit der zurückkehrende Spieler übernehmen kann.
+      this._timer = setTimeout(() => this.autoAct(false), occ.muck ? BOT_DELAY : ASSIST_DELAY);
+      return;
+    }
+    // Normaler Mensch (verbunden oder kurz getrennt): 10s Frist, dann EIN Auto-Zug (= Strike).
+    this._timer = setTimeout(() => this.autoAct(true), TURN_TIMEOUT);
   }
 
-  autoKontra(seat) {
+  // "Voll-Übernahme": Bot spielt alle Züge dieses Sitzes — manuell ("Bot spielt für mich"),
+  // beim Abwerfen, oder nach zu vielen verpassten Zügen hintereinander.
+  isFullAuto(seat) {
+    const p = this.seats[seat];
+    return !!p && !p.isBot && (!!p.assist || !!p.muck || (p.missStreak || 0) >= MISS_LIMIT);
+  }
+
+  autoKontra(seat, countsAsMiss = false) {
     this._timer = null;
     if (this.phase !== 'kontra') return;
     if (teamOf(seat) !== this.kontraTurn || this.kontraPassed.has(seat)) return;
     const occ = this.seats[seat];
-    if (occ && occ.connected && !occ.isBot) return; // Mensch entscheidet selbst
-    this.applyKontra(seat, 'pass'); // Bots erhöhen nicht
+    if (countsAsMiss && occ && !occ.isBot) occ.missStreak = (occ.missStreak || 0) + 1;
+    this.applyKontra(seat, 'pass'); // Bots/Auto erhöhen nicht, sie passen
   }
 
-  autoAct() {
+  autoAct(countsAsMiss = false) {
     this._timer = null;
     const seat = this.turnSeat;
     const occ = this.seats[seat];
     if (!occ) return;
-    if (occ.connected && !occ.isBot) return;
     if (this.phase === 'trump') {
       this.applyTrump(seat, decideTrump(this.hands[seat]));
     } else if (this.phase === 'mit') {
       this.applyMit(decideMit(this.hands[seat], this.trump, seat, this.trumpMakerTeam));
     } else if (this.phase === 'playing' && !this._resolving) {
       this.applyPlay(seat, this.pickBotCard(seat));
+    } else {
+      return;
     }
+    if (countsAsMiss && !occ.isBot) occ.missStreak = (occ.missStreak || 0) + 1;
   }
 
   // Kartenwahl je nach Bot-Stärke. Getrennte Menschen spielen immer "hard",
@@ -486,6 +568,7 @@ export class Room {
   playersPublic() {
     return this.seats.map((p, seat) => p ? {
       seat, name: p.name, isBot: p.isBot, connected: p.connected, team: teamOf(seat),
+      assist: !!p.assist, muck: !!p.muck, auto: this.isFullAuto(seat),
     } : { seat, name: null, isBot: false, connected: false, team: teamOf(seat), empty: true });
   }
 
@@ -509,16 +592,24 @@ export class Room {
       turnSeat: this.turnSeat,
       trump: this.trump,
       mit: this.mit,
-      qsHolder: this.qsHolder,
+      // Mit-Entscheider verbergen: qsHolder nur zeigen, wenn Mit angesagt wurde
+      // (dann öffentlich) oder man selbst die Pik-Dame hält.
+      qsHolder: (this.mit || you === this.qsHolder) ? this.qsHolder : null,
+      mitPending: this.phase === 'mit', // "Entscheidung Mit steht offen" – ohne zu verraten wer
       taker: this.taker,
       trumpMakerTeam: this.trumpMakerTeam,
       spielwert: this.spielwertBase,
       kontraTurn: this.kontraTurn,
       mitTeam: this.mitTeam,
+      knocks: this.knocks || [],
       yourHand,
       legalCards: legal,
       canTrump: this.phase === 'trump' && you === this.turnSeat,
       canMit: this.phase === 'mit' && you === this.qsHolder,
+      // Abwerfen anbieten, wenn nur noch wertlose Nicht-Trumpf-Karten in der Hand sind.
+      canMuck: this.phase === 'playing' && you >= 0 && this.seats[you] && !this.seats[you].isBot
+        && !this.seats[you].muck && this.hands[you].length > 0
+        && this.hands[you].every(c => !isTrump(c, this.trump, this.mit) && pointsOf(c) === 0),
       canKontra: this.phase === 'kontra' && you >= 0 && teamOf(you) === this.kontraTurn && !this.kontraPassed.has(you),
       kontraPassed: this.phase === 'kontra' && you >= 0 && this.kontraPassed.has(you),
       kontraLabel: this.phase === 'kontra' ? (this.kontraTurn === this.mitTeam ? 'Re' : 'Klopfen') : null,

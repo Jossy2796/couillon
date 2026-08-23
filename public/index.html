@@ -81,6 +81,7 @@
   <section id="game" class="screen hidden">
     <header class="topbar">
       <button id="btnMenu" class="icon-btn">☰</button>
+      <button id="roomCodeGame" class="room-code-game" title="Raumcode – tippen zum Kopieren"></button>
       <button id="scoreMini" class="score-mini">
         <span class="team-a">A <b id="boardA">13</b></span>
         <span class="score-sep">·</span>
@@ -277,6 +278,18 @@
         <span class="dcard"></span><span class="dcard"></span><span class="dcard"></span><span class="dcard"></span>
       </div>
       <div class="deal-caption">Karten werden ausgeteilt…</div>
+    </div>
+  </div>
+
+  <div id="muckOverlay" class="overlay hidden">
+    <div class="overlay-card">
+      <div class="muck-icon">🗑️</div>
+      <h3>Karten abwerfen?</h3>
+      <p>Du hast nur noch <b>wertlose Karten</b> (keine Punkte, kein Trumpf). Möchtest du sie alle abwerfen und die Runde zügig zu Ende spielen lassen?</p>
+      <div class="mit-btns">
+        <button id="btnMuckYes" class="btn btn-primary big">Ja, abwerfen</button>
+        <button id="btnMuckNo" class="btn big">Nein, selbst spielen</button>
+      </div>
     </div>
   </div>
 

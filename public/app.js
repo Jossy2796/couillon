@@ -40,6 +40,8 @@ let sendQueue = [];
 let reconnectDelay = 500;
 let prevPhase = null;   // für die Austeil-Animation
 let dealTimer = null;
+let muckAsked = false;  // "Abwerfen?"-Frage in dieser Runde bereits beantwortet
+let prevKnocks = 0;     // für den Klopf-Hinweis
 
 function wsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -87,6 +89,9 @@ function handleMessage(msg) {
       localStorage.setItem('couillon_room', msg.code);
       break;
     case 'state':
+      // Veralteten/fremden Raum-State ignorieren (verhindert, dass nach dem
+      // Verlassen kurz die alte Lobby über dem Home-Screen auftaucht).
+      if (!roomToRejoin || msg.code !== roomToRejoin) break;
       lastState = msg;
       render(msg);
       break;
@@ -109,12 +114,24 @@ function currentName() {
 function render(s) {
   if (s.phase === 'trump' && prevPhase !== 'trump') {
     playDeal(); // neue Runde -> austeilen
+    muckAsked = false; prevKnocks = 0; // Rundenzustände zurücksetzen
     if ((s.history || []).length === 0) announcePartner(s); // erste Runde eines Matches -> Teams zeigen
   }
   prevPhase = s.phase;
   if (s.phase === 'lobby') { showScreen('lobby'); renderLobby(s); }
   else { showScreen('game'); renderGame(s); }
+  notifyKnocks(s);
   renderOverlays(s);
+}
+
+// Kurzer Hinweis, sobald jemand klopft/Re macht (Beschwerde: schlecht erkennbar).
+function notifyKnocks(s) {
+  const kn = s.knocks || [];
+  if (kn.length > prevKnocks) {
+    const k = kn[kn.length - 1];
+    toast(`🔨 ${seatDisplay(s, k.seat)}: ${k.label}! Spielwert ${k.spielwert}`);
+  }
+  prevKnocks = kn.length;
 }
 
 function announcePartner(s) {
@@ -173,6 +190,8 @@ function renderLobby(s) {
 }
 
 function renderGame(s) {
+  // Raumcode klein in der Kopfzeile (zum Nachschauen/Teilen)
+  $('roomCodeGame').textContent = '#' + (s.code || '');
   // Kopfzeile (Striche zählen von 13 herunter)
   $('boardA').textContent = s.board.A;
   $('boardB').textContent = s.board.B;
@@ -220,27 +239,42 @@ function seatChip(p, s) {
   if (p.seat === s.dealerSeat) badges.push('<span class="badge dealer">Geber</span>');
   if (p.seat === s.taker) badges.push('<span class="badge">Trumpf</span>');
   if (s.mit && p.seat === s.qsHolder) badges.push('<span class="badge mit">Mit ♠D</span>');
+  const knock = (s.knocks || []).find(k => k.seat === p.seat);
+  if (knock) badges.push(`<span class="badge knock">🔨 ${knock.label}</span>`);
   const cls = ['player-chip'];
-  if (p.seat === s.turnSeat && (s.phase === 'bidding' || s.phase === 'playing')) cls.push('turn');
+  // Turn-Markierung nur bei Trumpf/Spiel — NICHT bei "Mit" (Entscheider bleibt verborgen).
+  if (p.seat === s.turnSeat && (s.phase === 'trump' || s.phase === 'playing')) cls.push('turn');
   if (!p.connected && !p.isBot) cls.push('disconnected');
-  const name = p.seat === s.you ? 'Du' : esc(p.name);
+  const isSelf = p.seat === s.you;
+  const name = isSelf ? 'Du' : esc(p.name);
   const n = s.handCounts[p.seat] || 0;
   let backs = '';
   for (let i = 0; i < n; i++) backs += '<div class="card-back"></div>';
   const dc = (!p.connected && !p.isBot) ? ' 📴' : '';
+  // "Bot spielt für mich"-Checkbox direkt rechts neben dem eigenen Namen.
+  let ctrl = '';
+  if (isSelf && !p.isBot) {
+    ctrl = `<label class="assist-toggle" title="Bot spielt für mich"><input type="checkbox" id="assistBox"${p.assist ? ' checked' : ''}><span>🤖</span></label>`;
+  }
+  // Status-Tag: wer wirft ab / für wen spielt gerade ein Bot.
+  let autoTag = '';
+  if (p.muck) autoTag = '<span class="auto-tag muck">wirft ab</span>';
+  else if (p.auto) autoTag = '<span class="auto-tag">🤖 Bot spielt</span>';
+  // Nach automatischer Übernahme: Button zum Selber-Weiterspielen.
+  if (isSelf && p.auto && !p.assist && !p.muck) autoTag += ' <button class="btn tiny" id="btnResume">▶ selbst</button>';
   return `<div class="${cls.join(' ')}"><span class="tdot" style="background:${dot}"></span>` +
-    `<span class="pname">${name}${dc}</span></div>` +
-    `<div>${badges.join(' ')}</div>` +
+    `<span class="pname">${name}${dc}</span>${ctrl}</div>` +
+    `<div>${badges.join(' ')}${autoTag}</div>` +
     `<div class="mini-cards">${backs}</div>`;
 }
 
 function centerInfo(s) {
   if (s.phase === 'trump') return s.canTrump ? 'Trumpf<br>bestimmen' : `${seatDisplay(s, s.turnSeat)}<br>wählt Trumpf…`;
-  if (s.phase === 'mit') return s.canMit ? 'Mit?' : `${seatDisplay(s, s.qsHolder)}<br>Mit?`;
-  if (s.phase === 'kontra') return `Kontra<br>Team ${s.kontraTurn}`;
+  if (s.phase === 'mit') return s.canMit ? 'Mit?' : 'Entscheidung Mit<br>steht offen';
+  if (s.phase === 'kontra') return `${s.kontraLabel || 'Kontra'}?<br>Team ${s.kontraTurn}`;
   if (s.trickComplete) return `${seatDisplay(s, s.trickWinnerSeat)}<br>gewinnt`;
   if (s.currentTrick.length > 0 && s.leadingSeat != null) return `▲ ${seatDisplay(s, s.leadingSeat)}<br>führt`;
-  return `Stich ${(s.trickCount || 0) + 1}/6`;
+  return `Stich ${Math.min((s.trickCount || 0) + 1, 6)}/6`;
 }
 
 function statusText(s) {
@@ -248,7 +282,7 @@ function statusText(s) {
     return s.canTrump ? '▶ Du bestimmst den Trumpf' : `${seatDisplay(s, s.turnSeat)} bestimmt den Trumpf…`;
   }
   if (s.phase === 'mit') {
-    return s.canMit ? '▶ Du: Pik-Dame ansagen (Mit)?' : `${seatDisplay(s, s.qsHolder)} entscheidet über die Mit…`;
+    return s.canMit ? '▶ Du: Pik-Dame ansagen (Mit)?' : 'Entscheidung über die Mit steht offen…';
   }
   if (s.phase === 'kontra') {
     if (s.canKontra) return `▶ Team ${s.kontraTurn}: ${s.kontraLabel}?`;
@@ -318,6 +352,9 @@ function renderOverlays(s) {
   const me = s.phase === 'matchEnd';
   $('matchEndOverlay').classList.toggle('hidden', !me);
   if (me) fillMatchEnd(s);
+
+  // Karten abwerfen? Nur solange möglich und in dieser Runde noch nicht beantwortet.
+  $('muckOverlay').classList.toggle('hidden', !(s.canMuck && !muckAsked));
 
   // Strichliste live aktualisieren, falls offen
   if (!$('scoreOverlay').classList.contains('hidden')) fillScoreboard(s);
@@ -477,6 +514,21 @@ function bindEvents() {
     send({ type: 'play', card: el.dataset.card });
   });
 
+  // "Bot spielt für mich" (Checkbox) + "▶ selbst" (nach automatischer Übernahme) — Delegation.
+  $('table').addEventListener('change', e => {
+    if (e.target && e.target.id === 'assistBox') send({ type: 'assist', value: e.target.checked });
+  });
+  $('table').addEventListener('click', e => {
+    if (e.target.closest('#btnResume')) send({ type: 'resume' });
+  });
+
+  // Karten abwerfen (Frage)
+  $('btnMuckYes').addEventListener('click', () => { muckAsked = true; $('muckOverlay').classList.add('hidden'); send({ type: 'muck' }); });
+  $('btnMuckNo').addEventListener('click', () => { muckAsked = true; $('muckOverlay').classList.add('hidden'); });
+
+  // Raumcode antippen = Link kopieren
+  $('roomCodeGame').addEventListener('click', copyLink);
+
   // Hand-/Match-Ende
   $('btnContinue').addEventListener('click', () => send({ type: 'continue' }));
   $('btnRematch').addEventListener('click', () => send({ type: 'rematch' }));
@@ -499,10 +551,14 @@ function joinFromInput() {
 }
 
 function leaveRoom() {
+  send({ type: 'leaveRoom', playerId }); // Server: Platz freigeben / State-Broadcast stoppen
   localStorage.removeItem('couillon_room');
   roomToRejoin = null;
   lastState = null;
-  ['trumpOverlay', 'mitOverlay', 'kontraOverlay', 'scoreOverlay', 'handEndOverlay', 'matchEndOverlay', 'menuOverlay', 'dealAnim'].forEach(id => $(id).classList.add('hidden'));
+  prevPhase = null;
+  muckAsked = false; prevKnocks = 0;
+  ['trumpOverlay', 'mitOverlay', 'kontraOverlay', 'scoreOverlay', 'handEndOverlay', 'matchEndOverlay', 'menuOverlay', 'muckOverlay', 'dealAnim'].forEach(id => $(id).classList.add('hidden'));
+  $('seatList').innerHTML = ''; // alte Lobby-Inhalte nicht stehen lassen
   showScreen('home');
   history.replaceState(null, '', location.pathname);
 }
