@@ -366,3 +366,14 @@ input::placeholder { color: rgba(255,255,255,.4); }
 
 .btn.tiny { padding: 3px 8px; font-size: 12px; border-radius: 8px; }
 .muck-icon { font-size: 40px; text-align: center; margin-bottom: 4px; }
+
+.turn-timer {
+  align-self: center; margin: 2px auto 0; font-size: 13px; font-weight: 700;
+  color: #e9f5ee; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.18);
+  padding: 4px 12px; border-radius: 14px;
+}
+.turn-timer.urgent {
+  color: #fff; background: rgba(220,60,60,.85); border-color: #ff6b6b;
+  animation: timer-pulse .6s ease-in-out infinite;
+}
+@keyframes timer-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }

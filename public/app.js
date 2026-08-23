@@ -42,6 +42,8 @@ let prevPhase = null;   // für die Austeil-Animation
 let dealTimer = null;
 let muckAsked = false;  // "Abwerfen?"-Frage in dieser Runde bereits beantwortet
 let prevKnocks = 0;     // für den Klopf-Hinweis
+let countdownTimer = null;  // lokaler Ticker für den Zug-Countdown
+let countdownEndAt = 0;     // Zeitpunkt (ms), zu dem der Bot übernimmt
 
 function wsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -121,7 +123,31 @@ function render(s) {
   if (s.phase === 'lobby') { showScreen('lobby'); renderLobby(s); }
   else { showScreen('game'); renderGame(s); }
   notifyKnocks(s);
+  updateCountdown(s);
   renderOverlays(s);
+}
+
+// Sichtbarer Countdown, bis der Bot für DICH übernimmt (kein Überraschungs-Zug mehr).
+// Der Server schickt die Restzeit; hier läuft ein lokaler Ticker, damit es flüssig runterzählt.
+function updateCountdown(s) {
+  const el = $('turnTimer');
+  if (s.yourCountdownMs == null) {
+    el.classList.add('hidden');
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    return;
+  }
+  countdownEndAt = Date.now() + s.yourCountdownMs;
+  el.classList.remove('hidden');
+  const tick = () => {
+    const left = Math.max(0, countdownEndAt - Date.now());
+    const secs = Math.ceil(left / 1000);
+    el.textContent = `⏱ ${secs}s — sonst spielt der Bot`;
+    el.classList.toggle('urgent', secs <= 3);
+    if (left <= 0 && countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  };
+  tick();
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(tick, 250);
 }
 
 // Kurzer Hinweis, sobald jemand klopft/Re macht (Beschwerde: schlecht erkennbar).
@@ -296,7 +322,10 @@ function statusText(s) {
       if (s.mit) t += ` · Mit: ${seatDisplay(s, s.qsHolder)}`;
       if ((s.spielwert || 1) > 1) t += ` · Wert ${s.spielwert}`;
     }
-    const turn = s.turnSeat === s.you ? '▶ Du bist dran' : `${seatDisplay(s, s.turnSeat)} ist dran`;
+    const meP = s.you >= 0 ? s.players[s.you] : null;
+    let turn;
+    if (s.turnSeat === s.you) turn = (meP && meP.auto) ? '🤖 Bot spielt für dich…' : '▶ Du bist dran';
+    else turn = `${seatDisplay(s, s.turnSeat)} ist dran`;
     return `${turn}${t}`;
   }
   return '';
@@ -557,6 +586,8 @@ function leaveRoom() {
   lastState = null;
   prevPhase = null;
   muckAsked = false; prevKnocks = 0;
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  $('turnTimer').classList.add('hidden');
   ['trumpOverlay', 'mitOverlay', 'kontraOverlay', 'scoreOverlay', 'handEndOverlay', 'matchEndOverlay', 'menuOverlay', 'muckOverlay', 'dealAnim'].forEach(id => $(id).classList.add('hidden'));
   $('seatList').innerHTML = ''; // alte Lobby-Inhalte nicht stehen lassen
   showScreen('home');

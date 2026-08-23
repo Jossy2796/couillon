@@ -67,6 +67,8 @@ export class Room {
     this._timer = null;
     this._resolving = false;
     this.lastActivity = Date.now();
+    this.autoDeadline = null; // Zeitpunkt (ms), zu dem der Bot automatisch übernimmt
+    this.autoForSeat = null;  // für welchen Sitz der Countdown läuft
   }
 
   // ---- Logging ----
@@ -484,6 +486,7 @@ export class Room {
   scheduleAuto() {
     if (this._resolving) return; // Stich-Auflösung nicht unterbrechen
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    this.autoDeadline = null; this.autoForSeat = null; // Countdown standardmäßig aus
     if (!this.hasConnectedHuman()) return;
 
     if (this.phase === 'roundEnd') {
@@ -496,7 +499,11 @@ export class Room {
       const autoNow = seatsTurn.find(s => this.seats[s].isBot || this.isFullAuto(s));
       if (autoNow != null) { this._timer = setTimeout(() => this.autoKontra(autoNow, false), BOT_DELAY); return; }
       const humanTurn = seatsTurn.find(s => !this.seats[s].isBot);
-      if (humanTurn != null) this._timer = setTimeout(() => this.autoKontra(humanTurn, true), TURN_TIMEOUT);
+      if (humanTurn != null) {
+        this.autoDeadline = Date.now() + TURN_TIMEOUT; this.autoForSeat = humanTurn;
+        this._timer = setTimeout(() => this.autoKontra(humanTurn, true), TURN_TIMEOUT);
+        this.onChange(); // Countdown sofort an die Clients senden
+      }
       return;
     }
     if (!['trump', 'mit', 'playing'].includes(this.phase)) return;
@@ -511,7 +518,10 @@ export class Room {
       return;
     }
     // Normaler Mensch (verbunden oder kurz getrennt): 10s Frist, dann EIN Auto-Zug (= Strike).
+    // Deadline setzen -> Client zeigt einen sichtbaren Countdown, damit die Übernahme nie überrascht.
+    this.autoDeadline = Date.now() + TURN_TIMEOUT; this.autoForSeat = seat;
     this._timer = setTimeout(() => this.autoAct(true), TURN_TIMEOUT);
+    this.onChange(); // Countdown sofort an die Clients senden (emit lief schon vor scheduleAuto)
   }
 
   // "Voll-Übernahme": Bot spielt alle Züge dieses Sitzes — manuell ("Bot spielt für mich"),
@@ -604,6 +614,9 @@ export class Room {
       knocks: this.knocks || [],
       yourHand,
       legalCards: legal,
+      // Sichtbarer Countdown bis zur Bot-Übernahme — nur für den Spieler, der gerade dran ist.
+      yourCountdownMs: (this.autoDeadline != null && this.autoForSeat === you && you >= 0)
+        ? Math.max(0, this.autoDeadline - Date.now()) : null,
       canTrump: this.phase === 'trump' && you === this.turnSeat,
       canMit: this.phase === 'mit' && you === this.qsHolder,
       // Abwerfen anbieten, wenn nur noch wertlose Nicht-Trumpf-Karten in der Hand sind.
