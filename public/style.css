@@ -299,11 +299,11 @@ input::placeholder { color: rgba(255,255,255,.4); }
 }
 .deal-stage { position: relative; width: min(88%, 340px); text-align: center; }
 .dealer-svg { width: 220px; max-width: 66%; height: auto; filter: drop-shadow(0 10px 22px rgba(0,0,0,.5)); animation: dealer-in .5s ease both; }
-/* Foto-Kartengeberin: weißer Hintergrund -> als gerundete Karte präsentiert */
+/* Foto-Kartengeberin: transparent freigestellt -> sitzt direkt auf dem Tisch.
+   drop-shadow (statt box-shadow) folgt der Silhouette, nicht dem Rechteck. */
 .dealer-frame {
-  width: min(92%, 380px); height: auto; display: block; margin: 0 auto;
-  border-radius: 16px; background: #fff;
-  box-shadow: 0 14px 34px rgba(0,0,0,.55); border: 3px solid rgba(255,255,255,.9);
+  width: min(96%, 420px); height: auto; display: block; margin: 0 auto;
+  filter: drop-shadow(0 12px 20px rgba(0,0,0,.45));
   animation: dealer-in .4s ease both; -webkit-user-select: none; user-select: none;
 }
 @keyframes dealer-in { from { opacity: 0; transform: translateY(22px) scale(.9); } to { opacity: 1; transform: none; } }

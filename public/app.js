@@ -45,10 +45,11 @@ let prevKnocks = 0;     // für den Klopf-Hinweis
 let countdownTimer = null;  // lokaler Ticker für den Zug-Countdown
 let countdownEndAt = 0;     // Zeitpunkt (ms), zu dem der Bot übernimmt
 
-// Foto-Kartengeberin: 16 Frames, ~100ms je Frame = 1,6s eine volle Austeil-Bewegung.
-const DEALER_FRAMES = Array.from({ length: 16 }, (_, i) => `dealer/dealer_frame_${String(i + 1).padStart(2, '0')}.png`);
-const DEAL_FRAME_MS = 100;
-let dealFrames = [];        // vorgeladene Image-Objekte (kein Flackern beim ersten Mal)
+// Foto-Kartengeberin: 60 WebP-Frames, ~55ms je Frame (~18 fps) = ein flüssiger
+// Durchlauf in ~3,3s. Hintergrund transparent (auf dem Tisch), weiße Schleier entfernt.
+const DEALER_FRAMES = Array.from({ length: 60 }, (_, i) => `dealer/dealer_frame_${String(i + 1).padStart(3, '0')}.webp`);
+const DEAL_FRAME_MS = 55;    // Tempo pro Frame
+let dealFrames = [];         // vorgeladene Image-Objekte (kein Flackern beim ersten Mal)
 let dealFrameTimer = null;
 function preloadDealer() { dealFrames = DEALER_FRAMES.map(src => { const im = new Image(); im.src = src; return im; }); }
 
@@ -189,7 +190,7 @@ function playDeal() {
   dealTimer = setTimeout(() => {
     el.classList.add('hidden');
     if (dealFrameTimer) { clearInterval(dealFrameTimer); dealFrameTimer = null; }
-  }, DEAL_FRAME_MS * DEALER_FRAMES.length + 120);
+  }, DEAL_FRAME_MS * DEALER_FRAMES.length + 150);
 }
 
 function renderLobby(s) {
