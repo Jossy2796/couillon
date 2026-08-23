@@ -45,6 +45,13 @@ let prevKnocks = 0;     // für den Klopf-Hinweis
 let countdownTimer = null;  // lokaler Ticker für den Zug-Countdown
 let countdownEndAt = 0;     // Zeitpunkt (ms), zu dem der Bot übernimmt
 
+// Foto-Kartengeberin: 16 Frames, ~100ms je Frame = 1,6s eine volle Austeil-Bewegung.
+const DEALER_FRAMES = Array.from({ length: 16 }, (_, i) => `dealer/dealer_frame_${String(i + 1).padStart(2, '0')}.png`);
+const DEAL_FRAME_MS = 100;
+let dealFrames = [];        // vorgeladene Image-Objekte (kein Flackern beim ersten Mal)
+let dealFrameTimer = null;
+function preloadDealer() { dealFrames = DEALER_FRAMES.map(src => { const im = new Image(); im.src = src; return im; }); }
+
 function wsUrl() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${location.host}`;
@@ -168,9 +175,21 @@ function announcePartner(s) {
 
 function playDeal() {
   const el = $('dealAnim');
-  el.classList.remove('hidden'); // display-Wechsel startet die CSS-Animationen neu
+  const img = $('dealerFrame');
   clearTimeout(dealTimer);
-  dealTimer = setTimeout(() => el.classList.add('hidden'), 1600);
+  if (dealFrameTimer) { clearInterval(dealFrameTimer); dealFrameTimer = null; }
+  let i = 0;
+  img.src = DEALER_FRAMES[0];
+  el.classList.remove('hidden');
+  dealFrameTimer = setInterval(() => {
+    i++;
+    if (i >= DEALER_FRAMES.length) { clearInterval(dealFrameTimer); dealFrameTimer = null; return; }
+    img.src = DEALER_FRAMES[i];
+  }, DEAL_FRAME_MS);
+  dealTimer = setTimeout(() => {
+    el.classList.add('hidden');
+    if (dealFrameTimer) { clearInterval(dealFrameTimer); dealFrameTimer = null; }
+  }, DEAL_FRAME_MS * DEALER_FRAMES.length + 120);
 }
 
 function renderLobby(s) {
@@ -563,7 +582,11 @@ function bindEvents() {
   $('btnRematch').addEventListener('click', () => send({ type: 'rematch' }));
 
   // Austeil-Animation antippen = überspringen
-  $('dealAnim').addEventListener('click', () => { clearTimeout(dealTimer); $('dealAnim').classList.add('hidden'); });
+  $('dealAnim').addEventListener('click', () => {
+    clearTimeout(dealTimer);
+    if (dealFrameTimer) { clearInterval(dealFrameTimer); dealFrameTimer = null; }
+    $('dealAnim').classList.add('hidden');
+  });
 
   // Menü
   $('btnMenu').addEventListener('click', () => { renderLog(); $('menuOverlay').classList.remove('hidden'); });
@@ -627,6 +650,7 @@ async function shareLink() {
 function init() {
   bindEvents();
   updateShareButtons();
+  preloadDealer();
   const params = new URLSearchParams(location.search);
   const urlRoom = (params.get('room') || '').toUpperCase();
   const storedRoom = localStorage.getItem('couillon_room');
