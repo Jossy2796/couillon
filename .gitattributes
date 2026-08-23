@@ -1,0 +1,6 @@
+# Bilder/Binärdateien NICHT als Text behandeln (verhindert CRLF-Beschädigung)
+*.webp binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.zip binary
