@@ -223,10 +223,28 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
 
   const botTeam = teamOf(seat);
   const samples = cfg.pimcSamples || PIMC_SAMPLES;
-  const scores = new Map(legal.map(c => [c, 0]));
+  // Harte Regel: Können wir den aktuellen Stich ohnehin nicht mehr holen, keinen
+  // Trumpf verschwenden — nur Nicht-Trumpf-Karten als Kandidaten (matcht gutes Spiel,
+  // vermeidet das unsinnige "niedrigen Trumpf unter den Gegner werfen"). PIMC wählt
+  // darunter den besten Abwurf.
+  let cands = legal;
+  if (trick.length > 0) {
+    const win0 = trick[localWinnerIdx(trick, trump, mit)].card;
+    const led0 = suitOf(trick[0].card);
+    if (!legal.some(c => beats(c, win0, led0, trump, mit))) {
+      const nonT = legal.filter(c => !isTrump(c, trump, mit));
+      if (nonT.length) cands = nonT;
+    }
+  }
+  if (cands.length === 1) return cands[0];
+  // Zwei Kennzahlen getrennt sammeln: benefit = Rundengewinn-Erwartung (Striche),
+  // margin = Kartenpunkte-Vorsprung. So bleibt der Rundensieg das primäre Ziel und
+  // die "Vernunft"-Korrektur unten kann nie einen Sieg wegwerfen.
+  const benefitSum = new Map(cands.map(c => [c, 0]));
+  const marginSum = new Map(cands.map(c => [c, 0]));
   for (let k = 0; k < samples; k++) {
     const dealt = determinize(unseen, need, seatVoids, esOf, fixed);
-    for (const cand of legal) {
+    for (const cand of cands) {
       const hands = { [seat]: hand.filter(c => c !== cand) };
       for (const o of others) hands[o] = dealt[o].slice();
       const rTrick = trick.map(t => ({ seat: t.seat, card: t.card }));
@@ -239,11 +257,33 @@ export function chooseCard(hand, trick, trump, mit, seat, playedCards = [], seat
       }
       const captured = { A: 0, B: 0 }, tricksWon = { A: 0, B: 0 };
       rollout(hands, rTrick, (seat + 1) % 4, trump, mit, played, voids, captured, tricksWon, cfg);
-      scores.set(cand, scores.get(cand) + rolloutScore(captured, tricksWon, botTeam, takerTeam, mit));
+      const o = rolloutScore(captured, tricksWon, botTeam, takerTeam, mit);
+      benefitSum.set(cand, benefitSum.get(cand) + o.benefit);
+      marginSum.set(cand, marginSum.get(cand) + o.margin);
     }
   }
-  let best = legal[0], bestScore = -Infinity;
-  for (const c of legal) { const s = scores.get(c); if (s > bestScore) { bestScore = s; best = c; } }
+  // Auswahl: PRIMÄR das beste Rundenergebnis (benefit). Unter praktisch gleich guten
+  // Karten (benEps) entscheidet die Punktemarge minus ein "Vernunft"-Abzug — so werden
+  // unsinnig aussehende Züge vermieden, OHNE je einen Rundensieg aufzugeben:
+  //  - den führenden Partner nicht unnötig überstechen
+  //  - keinen Trumpf verschwenden, der den Stich gar nicht holt (lieber abwerfen).
+  const maxBen = Math.max(...cands.map(c => benefitSum.get(c)));
+  const benEps = samples * 0.03; // ~gleich gute Rundenchance = Gleichstand
+  const winning = trick.length ? trick[localWinnerIdx(trick, trump, mit)].card : null;
+  const ledNat = trick.length ? suitOf(trick[0].card) : null;
+  const partnerWinning = trick.length > 0 && currentWinnerSeat(trick, trump, mit) === partnerOf(seat);
+  let best = cands[0], bestKey = -Infinity;
+  for (const c of cands) {
+    if (benefitSum.get(c) < maxBen - benEps) continue; // nur nahezu bestes Rundenergebnis
+    let pen = 0;
+    if (trick.length > 0) {
+      const beatsCur = beats(c, winning, ledNat, trump, mit);
+      if (partnerWinning && beatsCur) pen += 3;          // Partner nicht unnötig überstechen
+      if (isTrump(c, trump, mit) && !beatsCur) pen += 3; // Trumpf nicht sinnlos verschwenden
+    }
+    const key = marginSum.get(c) / samples - pen;
+    if (key > bestKey) { bestKey = key; best = c; }
+  }
   return best;
 }
 
@@ -314,5 +354,5 @@ function rolloutScore(captured, tricksWon, botTeam, takerTeam, mit) {
   const vole = tricksWon[winner] === 6;
   const spielwert = (mit ? 2 : 1) + (vole ? 1 : 0);
   const benefit = (winner === botTeam ? spielwert : 0) - (takerTeam === botTeam && winner !== botTeam ? 1 : 0);
-  return benefit * 100 + (captured[botTeam] - captured[oppTeam]); // Sieg zählt am meisten, Punktemarge als Feinschliff
+  return { benefit, margin: captured[botTeam] - captured[oppTeam] }; // Sieg primär, Punktemarge als Feinschliff
 }
