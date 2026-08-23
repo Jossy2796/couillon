@@ -41,6 +41,7 @@ let reconnectDelay = 500;
 let prevPhase = null;   // für die Austeil-Animation
 let dealTimer = null;
 let muckAsked = false;  // "Abwerfen?"-Frage in dieser Runde bereits beantwortet
+let pendingMuckCard = null; // Karte, die bei "Nein, nur diese" gespielt wird
 let prevKnocks = 0;     // für den Klopf-Hinweis
 let countdownTimer = null;  // lokaler Ticker für den Zug-Countdown
 let countdownEndAt = 0;     // Zeitpunkt (ms), zu dem der Bot übernimmt
@@ -402,8 +403,9 @@ function renderOverlays(s) {
   $('matchEndOverlay').classList.toggle('hidden', !me);
   if (me) fillMatchEnd(s);
 
-  // Karten abwerfen? Nur solange möglich und in dieser Runde noch nicht beantwortet.
-  $('muckOverlay').classList.toggle('hidden', !(s.canMuck && !muckAsked));
+  // Abwerfen-Frage NICHT automatisch öffnen (das macht der Karten-Klick).
+  // Nur schließen, falls Abwerfen nicht mehr möglich ist (z. B. Runde/Zug vorbei).
+  if (!s.canMuck) $('muckOverlay').classList.add('hidden');
 
   // Strichliste live aktualisieren, falls offen
   if (!$('scoreOverlay').classList.contains('hidden')) fillScoreboard(s);
@@ -556,11 +558,18 @@ function bindEvents() {
   $('scoreMini').addEventListener('click', () => { if (lastState) { fillScoreboard(lastState); $('scoreOverlay').classList.remove('hidden'); } });
   $('btnCloseScore').addEventListener('click', () => $('scoreOverlay').classList.add('hidden'));
 
-  // Karte spielen (Delegation)
+  // Karte spielen (Delegation). Wenn nur noch wertlose Karten in der Hand sind,
+  // erst NACH dem Antippen fragen, ob alles abgeworfen werden soll (lokal, andere sehen nichts).
   $('handArea').addEventListener('click', e => {
     const el = e.target.closest('.card.playable');
     if (!el) return;
-    send({ type: 'play', card: el.dataset.card });
+    const card = el.dataset.card;
+    if (lastState && lastState.canMuck && !muckAsked) {
+      pendingMuckCard = card;
+      $('muckOverlay').classList.remove('hidden');
+      return; // noch nicht spielen — auf die Antwort warten
+    }
+    send({ type: 'play', card });
   });
 
   // "Bot spielt für mich" (Checkbox) + "▶ selbst" (nach automatischer Übernahme) — Delegation.
@@ -571,9 +580,12 @@ function bindEvents() {
     if (e.target.closest('#btnResume')) send({ type: 'resume' });
   });
 
-  // Karten abwerfen (Frage)
-  $('btnMuckYes').addEventListener('click', () => { muckAsked = true; $('muckOverlay').classList.add('hidden'); send({ type: 'muck' }); });
-  $('btnMuckNo').addEventListener('click', () => { muckAsked = true; $('muckOverlay').classList.add('hidden'); });
+  // Abwerfen-Frage (erscheint nach Karten-Antippen): Ja = alle abwerfen, Nein = nur diese Karte spielen.
+  $('btnMuckYes').addEventListener('click', () => { muckAsked = true; $('muckOverlay').classList.add('hidden'); send({ type: 'muck' }); pendingMuckCard = null; });
+  $('btnMuckNo').addEventListener('click', () => {
+    muckAsked = true; $('muckOverlay').classList.add('hidden');
+    if (pendingMuckCard) { send({ type: 'play', card: pendingMuckCard }); pendingMuckCard = null; }
+  });
 
   // Raumcode antippen = Link kopieren
   $('roomCodeGame').addEventListener('click', copyLink);

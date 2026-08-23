@@ -13,9 +13,8 @@ const RANK_DISPLAY = { '9': '9', T: '10', J: 'B', Q: 'D', K: 'K', A: 'A' };
 export function formatCard(card) { return RANK_DISPLAY[card[0]] + SUIT_SYMBOLS[card[1]]; }
 
 const BOT_DELAY = 850;      // ms, natürlicheres Tempo für Bot-Züge
-const TURN_TIMEOUT = 10000; // ms, ein Mensch hat pro Zug 10s; danach spielt der Bot EINEN Zug (= "Strike")
-const ASSIST_DELAY = 3000;  // ms, Voll-Übernahme (2 Strikes ODER "Bot spielt für mich"): Bot wartet 3s vor jedem Zug
-const MISS_LIMIT = 2;       // so viele verpasste Züge hintereinander -> Bot übernimmt komplett
+const TURN_TIMEOUT = 15000; // ms, ein Mensch hat pro Zug 15s; NUR danach (oder bei "Bot spielt für mich") übernimmt der Bot
+const ASSIST_DELAY = 2500;  // ms, "Bot spielt für mich": Tempo, mit dem der Bot die Züge übernimmt
 const TRICK_PAUSE = 1300;   // ms, fertigen Stich kurz zeigen
 const HAND_PAUSE = 8000;    // ms, Rundenergebnis zeigen, dann automatisch weiter
 
@@ -495,13 +494,14 @@ export class Room {
     }
     if (this.phase === 'kontra') {
       const seatsTurn = this.teamSeatsOf(this.kontraTurn).filter(s => !this.kontraPassed.has(s) && this.seats[s]);
-      // Bots und Voll-Übernahme passen zügig; ein Mensch bekommt 10s, dann Auto-Pass (= Strike).
+      // Bots und "Bot spielt für mich" passen zügig; jeder Mensch entscheidet selbst,
+      // nur nach 15s wird automatisch gepasst.
       const autoNow = seatsTurn.find(s => this.seats[s].isBot || this.isFullAuto(s));
-      if (autoNow != null) { this._timer = setTimeout(() => this.autoKontra(autoNow, false), BOT_DELAY); return; }
+      if (autoNow != null) { this._timer = setTimeout(() => this.autoKontra(autoNow), BOT_DELAY); return; }
       const humanTurn = seatsTurn.find(s => !this.seats[s].isBot);
       if (humanTurn != null) {
         this.autoDeadline = Date.now() + TURN_TIMEOUT; this.autoForSeat = humanTurn;
-        this._timer = setTimeout(() => this.autoKontra(humanTurn, true), TURN_TIMEOUT);
+        this._timer = setTimeout(() => this.autoKontra(humanTurn), TURN_TIMEOUT);
         this.onChange(); // Countdown sofort an die Clients senden
       }
       return;
@@ -511,36 +511,34 @@ export class Room {
     const seat = this.turnSeat;
     const occ = this.seats[seat];
     if (!occ) return;
-    if (occ.isBot) { this._timer = setTimeout(() => this.autoAct(false), BOT_DELAY); return; }
+    if (occ.isBot) { this._timer = setTimeout(() => this.autoAct(), BOT_DELAY); return; }
     if (this.isFullAuto(seat)) {
-      // Voll-Übernahme: Abwerfen zügig, sonst 3s Pause, damit der zurückkehrende Spieler übernehmen kann.
-      this._timer = setTimeout(() => this.autoAct(false), occ.muck ? BOT_DELAY : ASSIST_DELAY);
+      // Nur wenn der Spieler es SELBST aktiviert hat: "Bot spielt für mich" (assist) oder Abwerfen (muck).
+      this._timer = setTimeout(() => this.autoAct(), occ.muck ? BOT_DELAY : ASSIST_DELAY);
       return;
     }
-    // Normaler Mensch (verbunden oder kurz getrennt): 10s Frist, dann EIN Auto-Zug (= Strike).
+    // Sonst: Mensch entscheidet selbst. Erst nach 15s spielt der Bot EINEN Zug.
     // Deadline setzen -> Client zeigt einen sichtbaren Countdown, damit die Übernahme nie überrascht.
     this.autoDeadline = Date.now() + TURN_TIMEOUT; this.autoForSeat = seat;
-    this._timer = setTimeout(() => this.autoAct(true), TURN_TIMEOUT);
+    this._timer = setTimeout(() => this.autoAct(), TURN_TIMEOUT);
     this.onChange(); // Countdown sofort an die Clients senden (emit lief schon vor scheduleAuto)
   }
 
-  // "Voll-Übernahme": Bot spielt alle Züge dieses Sitzes — manuell ("Bot spielt für mich"),
-  // beim Abwerfen, oder nach zu vielen verpassten Zügen hintereinander.
+  // Bot übernimmt einen Sitz NUR wenn: "Bot spielt für mich" (assist) an ODER Abwerfen (muck).
+  // Sonst passiert automatisch gar nichts, bis die 15s-Frist (TURN_TIMEOUT) abläuft.
   isFullAuto(seat) {
     const p = this.seats[seat];
-    return !!p && !p.isBot && (!!p.assist || !!p.muck || (p.missStreak || 0) >= MISS_LIMIT);
+    return !!p && !p.isBot && (!!p.assist || !!p.muck);
   }
 
-  autoKontra(seat, countsAsMiss = false) {
+  autoKontra(seat) {
     this._timer = null;
     if (this.phase !== 'kontra') return;
     if (teamOf(seat) !== this.kontraTurn || this.kontraPassed.has(seat)) return;
-    const occ = this.seats[seat];
-    if (countsAsMiss && occ && !occ.isBot) occ.missStreak = (occ.missStreak || 0) + 1;
-    this.applyKontra(seat, 'pass'); // Bots/Auto erhöhen nicht, sie passen
+    this.applyKontra(seat, 'pass'); // Bots/Auto/Frist-abgelaufen erhöhen nicht, sie passen
   }
 
-  autoAct(countsAsMiss = false) {
+  autoAct() {
     this._timer = null;
     const seat = this.turnSeat;
     const occ = this.seats[seat];
@@ -551,10 +549,7 @@ export class Room {
       this.applyMit(decideMit(this.hands[seat], this.trump, seat, this.trumpMakerTeam));
     } else if (this.phase === 'playing' && !this._resolving) {
       this.applyPlay(seat, this.pickBotCard(seat));
-    } else {
-      return;
     }
-    if (countsAsMiss && !occ.isBot) occ.missStreak = (occ.missStreak || 0) + 1;
   }
 
   // Kartenwahl je nach Bot-Stärke. Getrennte Menschen spielen immer "hard",

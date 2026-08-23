@@ -16,22 +16,17 @@ const H = r.seats[0];
 r.phase = 'playing'; r.trump = 'H'; r.mit = false; r.turnSeat = 0;
 r.hands = [['9C', 'TD', '9S'], ['AH'], ['KH'], ['QH']];
 ok(r.isFullAuto(0) === false, 'frisch: keine Voll-Übernahme');
-H.missStreak = 1; ok(r.isFullAuto(0) === false, '1 Strike: noch keine Voll-Übernahme');
-H.missStreak = 2; ok(r.isFullAuto(0) === true, '2 Strikes: Voll-Übernahme aktiv');
-r.humanActed(0); ok(H.missStreak === 0 && r.isFullAuto(0) === false, 'Aktion setzt Strikes zurück');
+// Auto-Play NUR bei assist/muck — niemals durch "verpasste Züge".
+H.missStreak = 5; ok(r.isFullAuto(0) === false, 'verpasste Züge lösen KEINE Auto-Übernahme aus');
 ok(r.isFullAuto(1) === false, 'Bot ist nie in Voll-Übernahme');
 
 // --- Assist an/aus ---
-r.setAssist('h1', true); ok(H.assist === true && r.isFullAuto(0) === true, 'Assist an -> Voll-Übernahme');
-H.missStreak = 2; r.setAssist('h1', false); ok(H.assist === false && H.missStreak === 0, 'Assist aus -> zurückgesetzt');
+r.setAssist('h1', true); ok(H.assist === true && r.isFullAuto(0) === true, 'Assist an -> Bot spielt');
+r.setAssist('h1', false); ok(H.assist === false && r.isFullAuto(0) === false, 'Assist aus -> Mensch spielt selbst');
 
-// --- resume nach automatischer Übernahme ---
-H.missStreak = 2; H.assist = true; r.resumeControl('h1');
-ok(H.missStreak === 0 && H.assist === false, 'resume übernimmt wieder selbst');
-
-// --- Reconnect setzt Strikes zurück ---
-H.missStreak = 2; r.seats[0].connected = false; r.addHuman('h1', 'Ich');
-ok(H.missStreak === 0, 'Reconnect setzt Strikes zurück');
+// --- resume ---
+H.assist = true; r.resumeControl('h1');
+ok(H.assist === false && r.isFullAuto(0) === false, 'resume: wieder selbst spielen');
 
 // --- canMuck / Abwerfen ---
 r = fresh();
